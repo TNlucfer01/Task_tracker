@@ -11,3 +11,5 @@ router.use("/project", projectRoutes);
 router.use("/tasks", taskRoutes);
 router.use("/department", departmentRoutes);
 router.use("/dashboard", dashboardRoutes);
+
+module.exports = router;

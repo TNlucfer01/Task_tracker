@@ -2,19 +2,19 @@ const express = require("express");
 const router = express.Router();
 
 router.get("/tasks", (req, res) => {
-  res.send("Admin Dashboard-task details");
+  res.status(501).json({ error: "Not implemented: Admin Dashboard-task details" });
 });
 
 router.get("/projects", (req, res) => {
-  res.send("Admin Dashboard-project details");
+  res.status(501).json({ error: "Not implemented: Admin Dashboard-project details" });
 });
 
 router.get("/users", (req, res) => {
-  res.send("Admin Dashboard-user details");
+  res.status(501).json({ error: "Not implemented: Admin Dashboard-user details" });
 });
 
 router.get("/rank", (req, res) => {
-  res.send("Admin Dashboard-rank details");
+  res.status(501).json({ error: "Not implemented: Admin Dashboard-rank details" });
 });
 
 

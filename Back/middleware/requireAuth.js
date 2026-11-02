@@ -1,10 +1,5 @@
 const jwt = require("jsonwebtoken");
-
-const jwtSecret = process.env.JWT_SECRET;
-
-if (!jwtSecret || Buffer.byteLength(jwtSecret) < 32) {
-  throw new Error("JWT_SECRET must be set to a random value of at least 32 bytes.");
-}
+const { jwtSecret, jwtOptions } = require("../config/auth");
 
 function requireAuth(req, res, next) {
   const token = req.cookies?.task_session;
@@ -16,8 +11,7 @@ function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, jwtSecret, {
       algorithms: ["HS256"],
-      issuer: "task-tracker-api",
-      audience: "task-tracker-web",
+      ...jwtOptions,
     });
 
     if (typeof payload === "string" || !payload.sub) {

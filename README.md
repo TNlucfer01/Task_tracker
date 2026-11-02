@@ -9,7 +9,8 @@
    ```powershell
    cd Back
    npm install
-   node index.js
+   npm run seed   # optional: adds 3 dummy users (aathi, priya, karthik), password TaskTracker@123
+   npm run dev    # or: npm start
    ```
 
 4. In another terminal, start the frontend:

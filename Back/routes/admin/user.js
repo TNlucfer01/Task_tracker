@@ -3,18 +3,18 @@ const router = express.Router();
 
 
 router.get("/", (req, res) => {
-  res.send("Admin User details");
+  res.status(501).json({ error: "Not implemented: Admin User details" });
 });
 
 router.post("/add", (req, res) => {
-  res.send("Admin User add details");
+  res.status(501).json({ error: "Not implemented: Admin User add details" });
 });
 
 router.put("/update/:id", (req, res) => {
-  res.send("Admin User update details");
+  res.status(501).json({ error: "Not implemented: Admin User update details" });
 });
 router.delete("/delete/:id", (req, res) => {
-  res.send("Admin User delete details");
+  res.status(501).json({ error: "Not implemented: Admin User delete details" });
 });
 
 module.exports = router;

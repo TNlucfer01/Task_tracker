@@ -4,9 +4,9 @@ const { rateLimit } = require("express-rate-limit");
 const jwt = require("jsonwebtoken");
 const supabase = require("../config/db");
 const requireAuth = require("../middleware/requireAuth");
+const { jwtSecret, jwtOptions } = require("../config/auth");
 
 const router = express.Router();
-const jwtSecret = process.env.JWT_SECRET;
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 const cookieOptions = {
   httpOnly: true,
@@ -14,10 +14,6 @@ const cookieOptions = {
   sameSite: "lax",
   path: "/",
 };
-
-if (!jwtSecret || Buffer.byteLength(jwtSecret) < 32) {
-  throw new Error("JWT_SECRET must be set to a random value of at least 32 bytes.");
-}
 
 const loginRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -97,8 +93,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
     {
       algorithm: "HS256",
       subject: String(user.id),
-      issuer: "task-tracker-api",
-      audience: "task-tracker-web",
+      ...jwtOptions,
       expiresIn: "8h",
     },
   );
