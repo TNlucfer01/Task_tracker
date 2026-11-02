@@ -37,3 +37,8 @@ lerna-debug.log*
 *.sln
 *.sw?
 Thumbs.db
+
+# Local agent configuration and downloaded skills
+**/.agent/
+**/.agents/
+**/skills-lock.json

@@ -1,122 +1,194 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useEffect, useState, type FormEvent } from 'react'
+import {
+  ApiError,
+  getCurrentUser,
+  getTasks,
+  login,
+  logout,
+  type Task,
+  type User,
+} from './utils/api'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [user, setUser] = useState<User | null>(null)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [identifier, setIdentifier] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let isCurrent = true
+
+    async function restoreSession() {
+      try {
+        const { user: currentUser } = await getCurrentUser()
+
+        if (!isCurrent) {
+          return
+        }
+
+        setUser(currentUser)
+        const { tasks: assignedTasks } = await getTasks()
+
+        if (isCurrent) {
+          setTasks(assignedTasks)
+        }
+      } catch (sessionError) {
+        if (isCurrent && !(sessionError instanceof ApiError && sessionError.status === 401)) {
+          setError(
+            sessionError instanceof Error
+              ? sessionError.message
+              : 'Unable to connect to the server.',
+          )
+        }
+      } finally {
+        if (isCurrent) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void restoreSession()
+
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      const { user: signedInUser } = await login(identifier, password)
+      setUser(signedInUser)
+      setPassword('')
+      const { tasks: assignedTasks } = await getTasks()
+      setTasks(assignedTasks)
+    } catch (loginError) {
+      setError(
+        loginError instanceof Error
+          ? loginError.message
+          : 'Unable to sign in. Please try again.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleLogout() {
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      await logout()
+      setUser(null)
+      setTasks([])
+      setPassword('')
+    } catch (logoutError) {
+      setError(
+        logoutError instanceof Error
+          ? logoutError.message
+          : 'Unable to sign out. Please try again.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="page-shell">
+        <p className="status-message" role="status">Checking your session...</p>
+      </main>
+    )
+  }
+
+  if (!user) {
+    return (
+      <main className="page-shell">
+        <section className="auth-card" aria-labelledby="login-title">
+          <div className="brand-mark" aria-hidden="true">T</div>
+          <p className="eyebrow">TASK TRACKER</p>
+          <h1 id="login-title">Welcome back</h1>
+          <p className="card-description">Sign in to see the tasks assigned to you.</p>
+
+          <form className="login-form" onSubmit={handleLogin}>
+            <label htmlFor="identifier">Username or email</label>
+            <input
+              id="identifier"
+              name="identifier"
+              type="text"
+              autoComplete="username"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              placeholder="Your username or email"
+              required
+              maxLength={320}
+            />
+
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Your password"
+              required
+              maxLength={1024}
+            />
+
+            {error && <p className="error-message" role="alert">{error}</p>}
+
+            <button type="submit" disabled={submitting}>
+              {submitting ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+        </section>
+      </main>
+    )
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <main className="page-shell">
+      <section className="task-panel" aria-labelledby="tasks-title">
+        <header className="dashboard-header">
+          <div>
+            <p className="eyebrow">TASK TRACKER</p>
+            <h1 id="tasks-title">Your tasks</h1>
+            <p className="card-description">Signed in as {user.name} · {user.email}</p>
+          </div>
+          <button
+            className="sign-out-button"
+            type="button"
+            onClick={handleLogout}
+            disabled={submitting}
+          >
+            {submitting ? 'Please wait...' : 'Sign out'}
+          </button>
+        </header>
 
-      <div className="ticks"></div>
+        {error && <p className="error-message" role="alert">{error}</p>}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
+        {tasks.length === 0 ? (
+          <p className="empty-state">There are no tasks assigned to you yet.</p>
+        ) : (
+          <ul className="task-list">
+            {tasks.map((task) => (
+              <li className="task-card" key={task.id}>
+                <h2>{task.name}</h2>
+                {task.description && <p>{task.description}</p>}
+              </li>
+            ))}
           </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
+        )}
       </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    </main>
   )
 }
-
-export default App
