@@ -1,6 +1,7 @@
 // The HTTP layer: every API call goes through `request`, which sends the session cookie and turns
 // error responses into readable messages.
-const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '') + '/api'
+const apiOrigin = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin)
+const apiUrl = apiOrigin.replace(/\/$/, '') + '/api'
 
 /** An API failure with its HTTP status and the server's message. */
 export class ApiError extends Error {

@@ -52,6 +52,7 @@ router.post("/", permit("roles.manage"), async (req, res) => {
   res.status(201).json({ role: (await listRoles()).find((r) => r.id === id) });
 });
 
+
 /** PATCH /roles/:id — renames a role, changes its scope, or replaces its permissions. */
 router.patch("/:id", permit("roles.manage"), async (req, res) => {
   const roleId = v.id(req.params.id, "role id");
@@ -73,8 +74,10 @@ router.patch("/:id", permit("roles.manage"), async (req, res) => {
       if (permissions.length) await tx`insert into role_permissions ${tx(permissions.map((p) => ({ role_id: roleId, permission: p })))}`;
     }
   });
-  res.json({ role: (await listRoles()).find((r) => r.id === roleId) });
+   
 });
+
+
 
 /** DELETE /roles/:id — deletes an unused, non-system role. */
 router.delete("/:id", permit("roles.manage"), async (req, res) => {
@@ -86,5 +89,6 @@ router.delete("/:id", permit("roles.manage"), async (req, res) => {
   await sql`delete from roles where id = ${roleId}`;
   res.status(204).end();
 });
+
 
 module.exports = router;

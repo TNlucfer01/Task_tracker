@@ -50,6 +50,25 @@ the whole company.
 Demo sign-ins (after `demo.sql`): `ravi` (Manager, Development), `arjun` (Team lead), `priya`
 (Employee), `lakshmi` (HR), `meena` (Manager, Design), all with `TaskTracker@123`.
 
+## Host the app online
+
+The simplest setup is **Render** for the web app and **Supabase** for PostgreSQL. Render builds the
+frontend and serves it from the same web service as the API, so login cookies stay same-origin.
+
+1. Push this repository to GitHub and create or update your Supabase database. If the schema is
+   already installed, do not rerun the migrations; `001_rebuild.sql` changes database tables.
+2. In Render, choose **New → Blueprint**, select this repository, and apply `render.yaml`.
+3. When prompted, set `DATABASE_URL` to your Supabase **Session pooler** connection string. Keep it
+   private. Render generates `JWT_SECRET` automatically.
+4. Wait for the service to become healthy, then open its `onrender.com` URL. The frontend and API
+   are served together; no `VITE_API_URL` setting is needed.
+5. To use a custom domain, add it to the Render service and configure its DNS as Render instructs.
+   Keep the app and API on the same origin.
+
+The deployment does not run database migrations or seed scripts. Back up production data and apply
+any future schema migration deliberately. The free Render plan may sleep when idle; choose a paid
+plan if the app needs to stay available continuously.
+
 ## Code structure
 
 ```
