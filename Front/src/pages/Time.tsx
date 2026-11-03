@@ -81,43 +81,52 @@ function Sessions({ userId, days }: { userId?: number; days: number }) {
   return (
     <DataState state={state} isEmpty={(d) => d.sessions.length === 0} empty="No work sessions in this period.">
       {(d) => (
-        <div className="rounded-lg border border-line bg-surface">
-          <TableWrap>
-            <table className="data-table min-w-[640px]">
-              <thead>
-                <tr>
-                  <th scope="col">Day</th>
-                  <th scope="col">Clock in</th>
-                  <th scope="col">Clock out</th>
-                  <th scope="col" className="num">Worked</th>
-                  <th scope="col" className="num">On tasks</th>
-                  <th scope="col">Notes</th>
-                  {d.can_correct && <th scope="col"><span className="sr-only">Actions</span></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {d.sessions.map((s) => (
-                  <tr key={s.id}>
-                    <th scope="row" className="font-medium">{formatDate(s.clock_in)}</th>
-                    <td>{formatTime(s.clock_in)}</td>
-                    <td>{s.clock_out ? formatTime(s.clock_out) : <Dot live color="var(--success)" label={`Working · ${since(s.clock_in, now)}`} />}</td>
-                    <td className="num">{formatMinutes(s.minutes)}</td>
-                    <td className="num">{formatMinutes(s.task_minutes)}</td>
-                    <td className="text-[13px] text-ink-soft">{s.corrections > 0 ? 'Corrected' : ''}</td>
-                    {d.can_correct && (
-                      <td className="text-right">
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
-                          Correct
-                        </Button>
-                      </td>
-                    )}
+        <>
+          <div className="hidden rounded-lg border border-line bg-surface sm:block">
+            <TableWrap>
+              <table className="data-table min-w-[640px]">
+                <thead>
+                  <tr>
+                    <th scope="col">Day</th><th scope="col">Clock in</th><th scope="col">Clock out</th>
+                    <th scope="col" className="num">Worked</th><th scope="col" className="num">On tasks</th>
+                    <th scope="col">Notes</th>{d.can_correct && <th scope="col"><span className="sr-only">Actions</span></th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
+                </thead>
+                <tbody>
+                  {d.sessions.map((s) => (
+                    <tr key={s.id}>
+                      <th scope="row" className="font-medium">{formatDate(s.clock_in)}</th>
+                      <td>{formatTime(s.clock_in)}</td>
+                      <td>{s.clock_out ? formatTime(s.clock_out) : <Dot live color="var(--success)" label={`Working · ${since(s.clock_in, now)}`} />}</td>
+                      <td className="num">{formatMinutes(s.minutes)}</td><td className="num">{formatMinutes(s.task_minutes)}</td>
+                      <td className="text-[13px] text-ink-soft">{s.corrections > 0 ? 'Corrected' : ''}</td>
+                      {d.can_correct && <td className="text-right"><Button size="sm" variant="ghost" onClick={() => setEditing(s)}>Correct</Button></td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          </div>
+          <ul className="mobile-records sm:hidden">
+            {d.sessions.map((s) => (
+              <li key={s.id} className="mobile-record">
+                <div className="flex items-start justify-between gap-3">
+                  <strong>{formatDate(s.clock_in)}</strong>
+                  {s.corrections > 0 && <span className="text-[12px] font-medium text-warning">Corrected</span>}
+                </div>
+                <div className="mobile-record-grid">
+                  <div><span className="mobile-record-label">Clocked in</span><span className="mobile-record-value">{formatTime(s.clock_in)}</span></div>
+                  <div><span className="mobile-record-label">Clocked out</span><span className="mobile-record-value">{s.clock_out ? formatTime(s.clock_out) : <Dot live color="var(--success)" label={`Working · ${since(s.clock_in, now)}`} />}</span></div>
+                  <div><span className="mobile-record-label">Worked</span><span className="mobile-record-value">{formatMinutes(s.minutes)}</span></div>
+                  <div><span className="mobile-record-label">On tasks</span><span className="mobile-record-value">{formatMinutes(s.task_minutes)}</span></div>
+                </div>
+                {d.can_correct && <div className="mt-3 flex justify-end"><Button size="sm" onClick={() => setEditing(s)}>Correct session</Button></div>}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[12px] text-ink-faint">Session durations are rounded to the nearest minute.</p>
           {editing && <CorrectDialog session={editing} onClose={() => setEditing(null)} onSaved={state.reload} />}
-        </div>
+        </>
       )}
     </DataState>
   )
@@ -151,37 +160,23 @@ function Attendance({ days }: { days: number }) {
                 </ul>
               )}
             </Panel>
-            <Panel title="Hours per day" padded={false}>
-              <TableWrap>
-                <table className="data-table min-w-[640px]">
-                  <thead>
-                    <tr>
-                      <th scope="col">Person</th>
-                      <th scope="col">Days</th>
-                      <th scope="col" className="num">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.people.map((p) => {
-                      const hours = dayList.map((day) => ({ day, hours: d.daily_hours.find((h) => h.user_id === p.id && h.day === day)?.hours_clocked ?? 0 }))
-                      return (
-                        <tr key={p.id}>
-                          <th scope="row" className="font-normal">
-                            <a href={href('people', p.id)} className="font-medium">
-                              {p.name}
-                            </a>
-                            <span className="block text-[12px] text-ink-faint">{p.department_name ?? 'No department'}</span>
-                          </th>
-                          <td>
-                            <HoursStrip days={hours} />
-                          </td>
-                          <td className="num">{formatHours(hours.reduce((a, h) => a + h.hours, 0))}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </TableWrap>
+            <Panel title="Hours per day">
+              <p className="mb-4 text-[13px] text-ink-soft">Only recorded clock-in sessions appear here. A blank day means no time was logged.</p>
+              <ul className="grid gap-3">
+                {d.people.map((p) => {
+                  const hours = dayList.map((day) => ({ day, hours: d.daily_hours.find((h) => h.user_id === p.id && h.day === day)?.hours_clocked ?? 0 }))
+                  return (
+                    <li key={p.id} className="grid gap-2 rounded-md border border-line p-3 sm:grid-cols-[minmax(120px,0.8fr)_minmax(0,2fr)_auto] sm:items-center">
+                      <div className="min-w-0">
+                        <a href={href('people', p.id)} className="font-medium">{p.name}</a>
+                        <span className="block text-[12px] text-ink-faint">{p.department_name ?? 'No department'}</span>
+                      </div>
+                      <div className="max-w-full overflow-x-auto"><HoursStrip days={hours} /></div>
+                      <strong className="text-sm tabular-nums">{formatHours(hours.reduce((a, h) => a + h.hours, 0))}</strong>
+                    </li>
+                  )
+                })}
+              </ul>
             </Panel>
           </div>
         )

@@ -417,7 +417,7 @@ export function ConfirmButton({ label, confirm, title, onConfirm, variant = 'dan
 /** Tabs that switch content within a page. */
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { value: T; label: ReactNode }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
+    <div role="tablist" className="tabs-strip mb-5 flex gap-1 overflow-x-auto border-b border-line">
       {tabs.map((t) => (
         <button
           key={t.value}

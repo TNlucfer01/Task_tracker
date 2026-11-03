@@ -16,68 +16,81 @@ import { Avatar, Button, Chip, cx, Dialog, Field as FormField, Input, Notice, Ov
 /** A dense table of tasks. */
 export function TaskTable({ tasks, showProject = true }: { tasks: TaskRow[]; showProject?: boolean }) {
   return (
-    <TableWrap>
-      <table className="data-table min-w-[820px]">
-        <thead>
-          <tr>
-            <th scope="col">Task</th>
-            <th scope="col">Status</th>
-            <th scope="col">Priority</th>
-            <th scope="col">Assignee</th>
-            <th scope="col">Deadline</th>
-            <th scope="col" className="num">Time / estimate</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((t) => {
-            const over = Boolean(t.estimate_minutes && t.actual_minutes > t.estimate_minutes)
-            return (
-              <tr key={t.id}>
-                <th scope="row" className="font-normal">
-                  <a href={href('tasks', t.id)} className="font-medium text-ink hover:text-primary">
-                    {t.title}
-                  </a>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-faint">
-                    <span>{t.key}</span>
-                    {showProject && <span>{t.project.name}</span>}
-                    {t.labels.slice(0, 3).map((l) => (
-                      <Chip key={l}>{l}</Chip>
-                    ))}
-                    {t.comment_count > 0 && (
-                      <span className="inline-flex items-center gap-0.5">
-                        <Icon name="comment" size={12} />
-                        {t.comment_count}
-                      </span>
-                    )}
-                  </span>
-                </th>
-                <td>
-                  <StatusBadge status={t.status} />
-                </td>
-                <td>
-                  <PriorityTag priority={t.priority} />
-                </td>
-                <td>
-                  <PersonLink person={t.assignee} />
-                </td>
-                <td className="whitespace-nowrap">
-                  {formatDate(t.deadline)}
-                  {t.overdue && <OverdueTag />}
-                </td>
-                <td className={cx('num', over && 'font-medium text-danger')}>
-                  {t.actual_minutes ? formatMinutes(t.actual_minutes) : '—'} / {formatMinutes(t.estimate_minutes)}
-                </td>
+    <>
+      <div className="hidden sm:block">
+        <TableWrap>
+          <table className="data-table min-w-[820px]">
+            <thead>
+              <tr>
+                <th scope="col">Task</th>
+                <th scope="col">Status</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Assignee</th>
+                <th scope="col">Deadline</th>
+                <th scope="col" className="num">Time / estimate</th>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </TableWrap>
+            </thead>
+            <tbody>
+              {tasks.map((t) => {
+                return (
+                  <tr key={t.id}>
+                    <th scope="row" className="font-normal">
+                      <a href={href('tasks', t.id)} className="font-medium text-ink hover:text-primary">
+                        {t.title}
+                      </a>
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-faint">
+                        <span>{t.key}</span>
+                        {showProject && <span>{t.project.name}</span>}
+                        {t.labels.slice(0, 3).map((l) => (
+                          <Chip key={l}>{l}</Chip>
+                        ))}
+                        {t.comment_count > 0 && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <Icon name="comment" size={12} />
+                            {t.comment_count}
+                          </span>
+                        )}
+                      </span>
+                    </th>
+                    <td><StatusBadge status={t.status} /></td>
+                    <td><PriorityTag priority={t.priority} /></td>
+                    <td><PersonLink person={t.assignee} /></td>
+                    <td className="whitespace-nowrap">{formatDate(t.deadline)}{t.overdue && <OverdueTag />}</td>
+                    <td className={cx('num', t.estimate_minutes && t.actual_minutes > t.estimate_minutes && 'font-medium text-danger')}>
+                      {t.actual_minutes ? formatMinutes(t.actual_minutes) : '—'} / {formatMinutes(t.estimate_minutes)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </TableWrap>
+      </div>
+      <ul className="mobile-records p-3 sm:hidden">
+        {tasks.map((t) => (
+          <li key={t.id} className="mobile-record">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <a href={href('tasks', t.id)} className="block font-semibold leading-5 text-ink">{t.title}</a>
+                <span className="mt-1 block text-[13px] text-ink-faint">{t.key}{showProject ? ` · ${t.project.name}` : ''}</span>
+              </div>
+              <StatusBadge status={t.status} />
+            </div>
+            <div className="mobile-record-grid">
+              <div><span className="mobile-record-label">Assignee</span><span className="mobile-record-value"><PersonLink person={t.assignee} /></span></div>
+              <div><span className="mobile-record-label">Deadline</span><span className={cx('mobile-record-value', t.overdue && 'font-medium text-danger')}>{formatDate(t.deadline)}{t.overdue && <OverdueTag />}</span></div>
+              <div><span className="mobile-record-label">Priority</span><PriorityTag priority={t.priority} /></div>
+              <div><span className="mobile-record-label">Time / estimate</span><span className={cx('mobile-record-value', t.estimate_minutes && t.actual_minutes > t.estimate_minutes && 'font-medium text-danger')}>{t.actual_minutes ? formatMinutes(t.actual_minutes) : '—'} / {formatMinutes(t.estimate_minutes)}</span></div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
   )
 }
 
 /** One card on the board. */
-function BoardCard({ task, draggable, onDragStart }: { task: TaskRow; draggable: boolean; onDragStart: (e: DragEvent) => void }) {
+function BoardCard({ task, draggable, onDragStart, onMove }: { task: TaskRow; draggable: boolean; onDragStart: (e: DragEvent) => void; onMove: (status: TaskStatus) => void }) {
   return (
     <li
       draggable={draggable}
@@ -106,6 +119,25 @@ function BoardCard({ task, draggable, onDragStart }: { task: TaskRow; draggable:
           </span>
         )}
       </div>
+      {draggable && task.status !== 'done' && (
+        <label className="mt-3 block text-[12px] text-ink-faint">
+          Move task
+          <select
+            aria-label={`Move ${task.key}`}
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) onMove(e.target.value as TaskStatus)
+              e.target.value = ''
+            }}
+            className="mt-1 h-8 w-full rounded-md border border-line bg-surface px-2 text-[13px] text-ink sm:hidden"
+          >
+            <option value="">Choose a status…</option>
+            {(['todo', 'in_progress', 'in_review'] as const).filter((status) => status !== task.status).map((status) => (
+              <option key={status} value={status}>{status === 'in_review' ? 'Submit for review' : taskStatusLabel[status]}</option>
+            ))}
+          </select>
+        </label>
+      )}
     </li>
   )
 }
@@ -132,8 +164,9 @@ export function TaskBoard({ tasks, onChanged }: { tasks: TaskRow[]; onChanged: (
   }
 
   return (
-    <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-      <div className="grid min-w-[1060px] grid-cols-5 gap-3">
+    <div className="-mx-4 snap-x snap-mandatory overflow-x-auto overscroll-x-contain px-4 pb-2 sm:mx-0 sm:snap-none sm:px-0">
+      <p className="mb-2 text-[12px] text-ink-faint sm:hidden">Swipe across to see each status. You can move cards with the menu on each task.</p>
+      <div className="task-board-columns gap-3 sm:min-w-[1060px]">
         {taskStatuses.map((status) => {
           const column = tasks.filter((t) => t.status === status)
           return (
@@ -149,7 +182,7 @@ export function TaskBoard({ tasks, onChanged }: { tasks: TaskRow[]; onChanged: (
                 e.preventDefault()
                 void drop(status, Number(e.dataTransfer.getData('text/task')))
               }}
-              className={cx('flex min-h-64 flex-col rounded-lg border bg-subtle/60', over === status ? 'border-primary' : 'border-line')}
+              className={cx('flex min-h-64 snap-start flex-col rounded-lg border bg-subtle/60', over === status ? 'border-primary' : 'border-line')}
             >
               <header className="flex items-center justify-between px-3 pt-3 pb-2">
                 <StatusBadge status={status} />
@@ -162,6 +195,7 @@ export function TaskBoard({ tasks, onChanged }: { tasks: TaskRow[]; onChanged: (
                     task={t}
                     draggable={t.status !== 'done' && (t.assignee_id === me.id || can(me, 'tasks.edit_any'))}
                     onDragStart={(e) => e.dataTransfer.setData('text/task', String(t.id))}
+                    onMove={(status) => void drop(status, t.id)}
                   />
                 ))}
                 {!column.length && <li className="rounded-md border border-dashed border-line px-3 py-6 text-center text-[13px] text-ink-faint">No tasks</li>}

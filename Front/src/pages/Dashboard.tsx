@@ -145,44 +145,47 @@ export function Dashboard() {
               </div>
 
               <Panel title="Departments" padded={false}>
-                <TableWrap>
-                  <table className="data-table min-w-[820px]">
-                    <thead>
-                      <tr>
-                        <th scope="col">Department</th>
-                        <th scope="col" className="num">People</th>
-                        <th scope="col" className="num">Clocked in</th>
-                        <th scope="col" className="num">Open</th>
-                        <th scope="col" className="num">Overdue</th>
-                        <th scope="col" className="num">Done</th>
-                        <th scope="col" className="num">Hours (7 days)</th>
-                        <th scope="col" className="num">On tasks</th>
-                        <th scope="col">Avg rating</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {depts.map((d) => (
-                        <tr key={d.id}>
-                          <th scope="row">
-                            <Dot color={departmentColor(depts, d.id)} label={<span className="text-sm font-medium">{d.name}</span>} />
-                          </th>
-                          <td className="num">{d.members}</td>
-                          <td className="num">{d.active_now}</td>
-                          <td className="num">
-                            <a href={href('tasks', { department_id: d.id, status: 'todo,in_progress,in_review,rework' })}>{d.open_tasks}</a>
-                          </td>
-                          <td className={d.overdue_tasks ? 'num font-medium text-danger' : 'num'}>{d.overdue_tasks}</td>
-                          <td className="num">{d.completed_tasks}</td>
-                          <td className="num">{formatHours(d.hours_week)}</td>
-                          <td className="num">{d.utilization_pct === null ? '—' : `${d.utilization_pct}%`}</td>
-                          <td>
-                            <Stars value={d.avg_rating} />
-                          </td>
+                <div className="hidden sm:block">
+                  <TableWrap>
+                    <table className="data-table min-w-[820px]">
+                      <thead>
+                        <tr>
+                          <th scope="col">Department</th><th scope="col" className="num">People</th><th scope="col" className="num">Clocked in</th>
+                          <th scope="col" className="num">Open</th><th scope="col" className="num">Overdue</th><th scope="col" className="num">Done</th>
+                          <th scope="col" className="num">Hours (7 days)</th><th scope="col" className="num">On tasks</th><th scope="col">Avg rating</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </TableWrap>
+                      </thead>
+                      <tbody>
+                        {depts.map((d) => (
+                          <tr key={d.id}>
+                            <th scope="row"><Dot color={departmentColor(depts, d.id)} label={<span className="text-sm font-medium">{d.name}</span>} /></th>
+                            <td className="num">{d.members}</td><td className="num">{d.active_now}</td>
+                            <td className="num"><a href={href('tasks', { department_id: d.id, status: 'todo,in_progress,in_review,rework' })}>{d.open_tasks}</a></td>
+                            <td className={d.overdue_tasks ? 'num font-medium text-danger' : 'num'}>{d.overdue_tasks}</td>
+                            <td className="num">{d.completed_tasks}</td><td className="num">{formatHours(d.hours_week)}</td>
+                            <td className="num">{d.utilization_pct === null ? '—' : `${d.utilization_pct}%`}</td><td><Stars value={d.avg_rating} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableWrap>
+                </div>
+                <ul className="mobile-records p-3 sm:hidden">
+                  {depts.map((d) => (
+                    <li key={d.id} className="mobile-record">
+                      <div className="flex items-center justify-between gap-3">
+                        <Dot color={departmentColor(depts, d.id)} label={<span className="font-semibold">{d.name}</span>} />
+                        <Stars value={d.avg_rating} />
+                      </div>
+                      <div className="mobile-record-grid">
+                        <div><span className="mobile-record-label">People · clocked in</span><span className="mobile-record-value">{d.members} · {d.active_now}</span></div>
+                        <div><span className="mobile-record-label">Open · overdue</span><span className="mobile-record-value"><a href={href('tasks', { department_id: d.id, status: 'todo,in_progress,in_review,rework' })}>{d.open_tasks}</a> · <span className={d.overdue_tasks ? 'font-medium text-danger' : ''}>{d.overdue_tasks}</span></span></div>
+                        <div><span className="mobile-record-label">Done · hours this week</span><span className="mobile-record-value">{d.completed_tasks} · {formatHours(d.hours_week)}</span></div>
+                        <div><span className="mobile-record-label">On tasks</span><span className="mobile-record-value">{d.utilization_pct === null ? '—' : `${d.utilization_pct}%`}</span></div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </Panel>
 
               <Panel title="Recent activity">

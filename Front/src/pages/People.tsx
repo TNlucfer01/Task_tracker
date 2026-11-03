@@ -54,50 +54,70 @@ export function People() {
         <Segmented label="Period" value={days} onChange={setDays} options={[{ value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]} />
       </Toolbar>
       <DataState state={state} isEmpty={(d) => d.people.length === 0} empty="Nobody to show yet.">
-        {(d) => (
-          <div className="rounded-lg border border-line bg-surface">
-            <TableWrap>
-              <table className="data-table min-w-[980px]">
-                <thead>
-                  <tr>
-                    <SortTh k="name">Person</SortTh>
-                    <th scope="col">Department</th>
-                    <SortTh k="tasks_done" num>Done</SortTh>
-                    <SortTh k="on_time_pct" num>On time</SortTh>
-                    <SortTh k="avg_rating">Rating</SortTh>
-                    <SortTh k="open_tasks" num>Open</SortTh>
-                    <SortTh k="overdue_tasks" num>Overdue</SortTh>
-                    <SortTh k="hours_clocked" num>Hours</SortTh>
-                    <th scope="col" className="num">On tasks</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted(d.people).map((p) => (
-                    <tr key={p.id} className={p.is_active ? '' : 'opacity-60'}>
-                      <th scope="row" className="font-normal">
+        {(d) => {
+          const rows = sorted(d.people)
+          return (
+            <>
+              <div className="hidden rounded-lg border border-line bg-surface sm:block">
+                <TableWrap>
+                  <table className="data-table min-w-[980px]">
+                    <thead>
+                      <tr>
+                        <SortTh k="name">Person</SortTh>
+                        <th scope="col">Department</th>
+                        <SortTh k="tasks_done" num>Done</SortTh>
+                        <SortTh k="on_time_pct" num>On time</SortTh>
+                        <SortTh k="avg_rating">Rating</SortTh>
+                        <SortTh k="open_tasks" num>Open</SortTh>
+                        <SortTh k="overdue_tasks" num>Overdue</SortTh>
+                        <SortTh k="hours_clocked" num>Hours</SortTh>
+                        <th scope="col" className="num">On tasks</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((p) => (
+                        <tr key={p.id} className={p.is_active ? '' : 'opacity-60'}>
+                          <th scope="row" className="font-normal">
+                            <PersonLink person={p} to={href('people', p.id)} />
+                            <span className="block pl-[30px] text-[12px] text-ink-faint">{p.title || p.role.name}{!p.is_active && ' · Inactive'}</span>
+                          </th>
+                          <td>{p.clocked_in_since ? <Dot live color="var(--success)" label={p.department?.name ?? '—'} /> : p.department?.name ?? '—'}</td>
+                          <td className="num">{p.tasks_done}</td>
+                          <td className="num">{p.on_time_pct === null ? '—' : `${Math.round(p.on_time_pct)}%`}</td>
+                          <td><Stars value={p.avg_rating} /></td>
+                          <td className="num">{p.open_tasks}</td>
+                          <td className={p.overdue_tasks ? 'num font-medium text-danger' : 'num'}>{p.overdue_tasks}</td>
+                          <td className="num">{formatHours(p.hours_clocked)}</td>
+                          <td className="num">{p.hours_clocked > 0 ? `${Math.min(100, Math.round((100 * p.task_hours) / p.hours_clocked))}%` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableWrap>
+              </div>
+              <ul className="mobile-records sm:hidden">
+                {rows.map((p) => (
+                  <li key={p.id} className={`mobile-record ${p.is_active ? '' : 'opacity-60'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <PersonLink person={p} to={href('people', p.id)} />
-                        <span className="block pl-[30px] text-[12px] text-ink-faint">
-                          {p.title || p.role.name}
-                          {!p.is_active && ' · Inactive'}
-                        </span>
-                      </th>
-                      <td>{p.clocked_in_since ? <Dot live color="var(--success)" label={p.department?.name ?? '—'} /> : p.department?.name ?? '—'}</td>
-                      <td className="num">{p.tasks_done}</td>
-                      <td className="num">{p.on_time_pct === null ? '—' : `${Math.round(p.on_time_pct)}%`}</td>
-                      <td>
-                        <Stars value={p.avg_rating} />
-                      </td>
-                      <td className="num">{p.open_tasks}</td>
-                      <td className={p.overdue_tasks ? 'num font-medium text-danger' : 'num'}>{p.overdue_tasks}</td>
-                      <td className="num">{formatHours(p.hours_clocked)}</td>
-                      <td className="num">{p.hours_clocked > 0 ? `${Math.min(100, Math.round((100 * p.task_hours) / p.hours_clocked))}%` : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
-          </div>
-        )}
+                        <p className="truncate text-[13px] text-ink-faint">{p.title || p.role.name}{!p.is_active && ' · Inactive'}</p>
+                      </div>
+                      {p.clocked_in_since && <Dot live color="var(--success)" label="Working" />}
+                    </div>
+                    <p className="mt-3 text-[13px] text-ink-soft">{p.department?.name ?? 'No department'}</p>
+                    <div className="mobile-record-grid">
+                      <div><span className="mobile-record-label">Done · on time</span><span className="mobile-record-value">{p.tasks_done} · {p.on_time_pct === null ? '—' : `${Math.round(p.on_time_pct)}%`}</span></div>
+                      <div><span className="mobile-record-label">Rating</span><Stars value={p.avg_rating} /></div>
+                      <div><span className="mobile-record-label">Open · overdue</span><span className="mobile-record-value">{p.open_tasks} · <span className={p.overdue_tasks ? 'font-medium text-danger' : ''}>{p.overdue_tasks}</span></span></div>
+                      <div><span className="mobile-record-label">Hours · on tasks</span><span className="mobile-record-value">{formatHours(p.hours_clocked)} · {p.hours_clocked > 0 ? `${Math.min(100, Math.round((100 * p.task_hours) / p.hours_clocked))}%` : '—'}</span></div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )
+        }}
       </DataState>
     </>
   )

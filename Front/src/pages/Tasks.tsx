@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { departments as departmentsApi, projects as projectsApi, tasks as tasksApi, users as usersApi } from '../api/endpoints'
 import { ImportDialog, NewTaskDialog, TaskBoard, TaskTable } from '../components/tasks'
-import { Button, Checkbox, DataState, Field, Input, PageHeader, Segmented, Select, Toolbar } from '../components/ui'
+import { Button, Checkbox, cx, DataState, Field, Input, PageHeader, Segmented, Select, Toolbar } from '../components/ui'
 import { plural, priorities, priorityLabel, taskStatusLabel, taskStatuses } from '../lib/format'
 import { setParams } from '../lib/router'
 import { can, useMe } from '../lib/session'
@@ -22,6 +22,7 @@ export function Tasks({ params, fixed, embedded }: { params: URLSearchParams; fi
   const view = params.get('view') === 'board' ? 'board' : 'list'
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [search, setSearch] = useState(filters.q)
   const key = JSON.stringify(filters) + view
   const tasks = useApi(() => tasksApi.list({ ...filters, sort: view === 'board' ? 'board' : 'deadline', limit: 500 }), key)
@@ -35,6 +36,7 @@ export function Tasks({ params, fixed, embedded }: { params: URLSearchParams; fi
     setParams(next)
   }
   const hasFilters = FILTER_KEYS.some((k) => k !== 'project_id' && filters[k]) || (!fixed && filters.project_id)
+  const activeFilterCount = FILTER_KEYS.filter((key) => key !== 'project_id' && Boolean(filters[key])).length + (!fixed && filters.project_id ? 1 : 0)
 
   const header = embedded ? null : (
     <PageHeader
@@ -60,97 +62,18 @@ export function Tasks({ params, fixed, embedded }: { params: URLSearchParams; fi
       {header}
       <Toolbar>
         <form
+          className="min-w-0 flex-1 sm:flex-none"
           onSubmit={(e) => {
             e.preventDefault()
             update({ q: search })
           }}
         >
-          <Field label="Search">{(id) => <Input id={id} type="search" placeholder="Title or key" value={search} onChange={(e) => setSearch(e.target.value)} onBlur={() => search !== filters.q && update({ q: search })} className="w-52" />}</Field>
+          <Field label="Search">{(id) => <Input id={id} type="search" placeholder="Title or key" value={search} onChange={(e) => setSearch(e.target.value)} onBlur={() => search !== filters.q && update({ q: search })} className="w-full sm:w-52" />}</Field>
         </form>
-        <Field label="Status">
-          {(id) => (
-            <Select id={id} value={filters.status} onChange={(e) => update({ status: e.target.value })} className="w-36">
-              <option value="">Any</option>
-              <option value="todo,in_progress,in_review,rework">Not done</option>
-              {taskStatuses.map((s) => (
-                <option key={s} value={s}>
-                  {taskStatusLabel[s]}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-        {me.role.scope !== 'own' && (
-          <Field label="Assignee">
-            {(id) => (
-              <Select id={id} value={filters.assignee} onChange={(e) => update({ assignee: e.target.value })} className="w-40">
-                <option value="">Anyone</option>
-                <option value="me">Me</option>
-                <option value="none">Unassigned</option>
-                {people.data?.users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        )}
-        {!fixed && (
-          <Field label="Project">
-            {(id) => (
-              <Select id={id} value={filters.project_id} onChange={(e) => update({ project_id: e.target.value })} className="w-44">
-                <option value="">Any</option>
-                {projects.data?.projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.key} · {p.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        )}
-        <Field label="Priority">
-          {(id) => (
-            <Select id={id} value={filters.priority} onChange={(e) => update({ priority: e.target.value })} className="w-32">
-              <option value="">Any</option>
-              {priorities.map((p) => (
-                <option key={p} value={p}>
-                  {priorityLabel[p]}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-        {me.role.scope === 'all' && !fixed && (
-          <Field label="Department">
-            {(id) => (
-              <Select id={id} value={filters.department_id} onChange={(e) => update({ department_id: e.target.value })} className="w-40">
-                <option value="">Any</option>
-                {depts.data?.departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        )}
-        <div className="pb-2">
-          <Checkbox label="Overdue only" checked={filters.overdue === 'true'} onChange={(v) => update({ overdue: v ? 'true' : '' })} />
-        </div>
-        {hasFilters && (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setSearch('')
-              setParams({ view: view === 'board' ? 'board' : undefined })
-            }}
-          >
-            Clear filters
+        <div className="flex items-end gap-2 sm:ml-auto">
+          <Button className="sm:hidden" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+            Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
           </Button>
-        )}
-        <div className="ml-auto pb-0.5">
           <Segmented
             label="View"
             value={view}
@@ -161,6 +84,71 @@ export function Tasks({ params, fixed, embedded }: { params: URLSearchParams; fi
             ]}
           />
         </div>
+        <div className={cx('w-full grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end', filtersOpen ? 'grid' : 'hidden sm:flex')}>
+          <Field label="Status">
+            {(id) => (
+              <Select id={id} value={filters.status} onChange={(e) => update({ status: e.target.value })} className="w-full sm:w-36">
+                <option value="">Any</option>
+                <option value="todo,in_progress,in_review,rework">Not done</option>
+                {taskStatuses.map((s) => <option key={s} value={s}>{taskStatusLabel[s]}</option>)}
+              </Select>
+            )}
+          </Field>
+          {me.role.scope !== 'own' && (
+            <Field label="Assignee">
+              {(id) => (
+                <Select id={id} value={filters.assignee} onChange={(e) => update({ assignee: e.target.value })} className="w-full sm:w-40">
+                  <option value="">Anyone</option>
+                  <option value="me">Me</option>
+                  <option value="none">Unassigned</option>
+                  {people.data?.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </Select>
+              )}
+            </Field>
+          )}
+          {!fixed && (
+            <Field label="Project">
+              {(id) => (
+                <Select id={id} value={filters.project_id} onChange={(e) => update({ project_id: e.target.value })} className="w-full sm:w-44">
+                  <option value="">Any</option>
+                  {projects.data?.projects.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
+                </Select>
+              )}
+            </Field>
+          )}
+          <Field label="Priority">
+            {(id) => (
+              <Select id={id} value={filters.priority} onChange={(e) => update({ priority: e.target.value })} className="w-full sm:w-32">
+                <option value="">Any</option>
+                {priorities.map((p) => <option key={p} value={p}>{priorityLabel[p]}</option>)}
+              </Select>
+            )}
+          </Field>
+          {me.role.scope === 'all' && !fixed && (
+            <Field label="Department">
+              {(id) => (
+                <Select id={id} value={filters.department_id} onChange={(e) => update({ department_id: e.target.value })} className="w-full sm:w-40">
+                  <option value="">Any</option>
+                  {depts.data?.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Select>
+              )}
+            </Field>
+          )}
+          <div className="pb-2">
+            <Checkbox label="Overdue only" checked={filters.overdue === 'true'} onChange={(v) => update({ overdue: v ? 'true' : '' })} />
+          </div>
+          {hasFilters && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSearch('')
+                setParams({ view: view === 'board' ? 'board' : undefined })
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
       </Toolbar>
 
       <DataState state={tasks} isEmpty={(d) => d.tasks.length === 0 && view === 'list'} empty={hasFilters ? 'No tasks match these filters.' : 'No tasks yet. Create one to get started.'}>
@@ -170,7 +158,7 @@ export function Tasks({ params, fixed, embedded }: { params: URLSearchParams; fi
             {view === 'board' ? (
               <TaskBoard tasks={d.tasks} onChanged={tasks.reload} />
             ) : (
-              <div className="rounded-lg border border-line bg-surface">
+              <div className="border-0 bg-transparent sm:rounded-lg sm:border sm:border-line sm:bg-surface">
                 <TaskTable tasks={d.tasks} showProject={!fixed} />
               </div>
             )}

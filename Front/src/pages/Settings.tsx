@@ -106,8 +106,8 @@ function UsersTab() {
   return (
     <>
       <Toolbar>
-        <Input type="search" aria-label="Search people" placeholder="Search name, email or title" value={q} onChange={(e) => setQ(e.target.value)} className="w-64" />
-        <Select aria-label="Department" value={dept} onChange={(e) => setDept(e.target.value)} className="w-44">
+        <Input type="search" aria-label="Search people" placeholder="Search name, email or title" value={q} onChange={(e) => setQ(e.target.value)} className="w-full sm:w-64" />
+        <Select aria-label="Department" value={dept} onChange={(e) => setDept(e.target.value)} className="w-full sm:w-44">
           <option value="">All departments</option>
           {depts.data?.departments.map((d) => (
             <option key={d.id} value={d.id}>
@@ -115,7 +115,7 @@ function UsersTab() {
             </option>
           ))}
         </Select>
-        <Select aria-label="Status" value={active} onChange={(e) => setActive(e.target.value)} className="w-32">
+        <Select aria-label="Status" value={active} onChange={(e) => setActive(e.target.value)} className="w-full sm:w-32">
           <option value="true">Active</option>
           <option value="false">Inactive</option>
           <option value="">Everyone</option>
@@ -128,49 +128,61 @@ function UsersTab() {
       </Toolbar>
       <DataState state={list} isEmpty={(d) => d.users.length === 0} empty="Nobody matches.">
         {(d) => (
-          <div className="rounded-lg border border-line bg-surface">
-            <TableWrap>
-              <table className="data-table min-w-[760px]">
-                <thead>
-                  <tr>
-                    <th scope="col">Person</th>
-                    <th scope="col">Role</th>
-                    <th scope="col">Department</th>
-                    <th scope="col">Added</th>
-                    <th scope="col"><span className="sr-only">Actions</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.users.map((u) => (
-                    <tr key={u.id} className={u.is_active ? '' : 'opacity-60'}>
-                      <th scope="row" className="font-normal">
-                        <PersonLink person={u} />
-                        <span className="block pl-[30px] text-[12px] text-ink-faint">
-                          {u.email}
-                          {u.title ? ` · ${u.title}` : ''}
-                        </span>
-                      </th>
-                      <td>
-                        <Badge>{u.role.name}</Badge>
-                      </td>
-                      <td>{u.department?.name ?? '—'}</td>
-                      <td>{formatDate(u.created_at)}</td>
-                      <td className="text-right whitespace-nowrap">
-                        {can(me, 'people.view') && (
-                          <Button size="sm" variant="ghost" onClick={() => go('people', u.id)}>
-                            Work
-                          </Button>
-                        )}
-                        <Button size="sm" variant="ghost" disabled={!ready} onClick={() => setEditing(u)}>
-                          Edit
-                        </Button>
-                      </td>
+          <>
+            <div className="hidden rounded-lg border border-line bg-surface sm:block">
+              <TableWrap>
+                <table className="data-table min-w-[760px]">
+                  <thead>
+                    <tr>
+                      <th scope="col">Person</th>
+                      <th scope="col">Role</th>
+                      <th scope="col">Department</th>
+                      <th scope="col">Added</th>
+                      <th scope="col"><span className="sr-only">Actions</span></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
-          </div>
+                  </thead>
+                  <tbody>
+                    {d.users.map((u) => (
+                      <tr key={u.id} className={u.is_active ? '' : 'opacity-60'}>
+                        <th scope="row" className="font-normal">
+                          <PersonLink person={u} />
+                          <span className="block pl-[30px] text-[12px] text-ink-faint">{u.email}{u.title ? ` · ${u.title}` : ''}</span>
+                        </th>
+                        <td><Badge>{u.role.name}</Badge></td>
+                        <td>{u.department?.name ?? '—'}</td>
+                        <td>{formatDate(u.created_at)}</td>
+                        <td className="text-right whitespace-nowrap">
+                          {can(me, 'people.view') && <Button size="sm" variant="ghost" onClick={() => go('people', u.id)}>Work</Button>}
+                          <Button size="sm" variant="ghost" disabled={!ready} onClick={() => setEditing(u)}>Edit</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
+            </div>
+            <ul className="mobile-records sm:hidden">
+              {d.users.map((u) => (
+                <li key={u.id} className={`mobile-record ${u.is_active ? '' : 'opacity-60'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <PersonLink person={u} />
+                      <p className="mt-1 break-all text-[13px] text-ink-faint">{u.email}</p>
+                      {u.title && <p className="text-[13px] text-ink-faint">{u.title}</p>}
+                    </div>
+                    <Badge>{u.role.name}</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[13px] text-ink-soft">{u.department?.name ?? 'No department'} · Added {formatDate(u.created_at)}</span>
+                    <span className="flex gap-1">
+                      {can(me, 'people.view') && <Button size="sm" variant="ghost" onClick={() => go('people', u.id)}>Work</Button>}
+                      <Button size="sm" variant="ghost" disabled={!ready} onClick={() => setEditing(u)}>Edit</Button>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </DataState>
       {editing && ready && (
@@ -316,14 +328,26 @@ function RolesTab() {
                   </div>
                 </div>
                 {r.description && <p className="mt-2 text-ink-soft">{r.description}</p>}
-                <ul className="mt-3 flex flex-wrap gap-1">
-                  {(r.is_system ? catalogue.data?.permissions.map((p) => p.key) ?? [] : r.permissions).map((p) => (
-                    <li key={p}>
-                      <Badge>{label(p)}</Badge>
-                    </li>
-                  ))}
-                  {!r.is_system && r.permissions.length === 0 && <li className="text-[13px] text-ink-faint">No permissions — can only see their own work.</li>}
-                </ul>
+                {(() => {
+                  const permissionKeys = r.is_system ? catalogue.data?.permissions.map((p) => p.key) ?? [] : r.permissions
+                  const groups = new Map<string, string[]>()
+                  for (const key of permissionKeys) {
+                    const group = catalogue.data?.permissions.find((p) => p.key === key)?.group ?? 'Other'
+                    groups.set(group, [...(groups.get(group) ?? []), key])
+                  }
+                  return permissionKeys.length ? (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {[...groups.entries()].map(([group, keys]) => (
+                        <section key={group} className="min-w-0 rounded-md bg-subtle/60 p-3">
+                          <h4 className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-ink-faint">{group}</h4>
+                          <ul className="flex flex-wrap gap-1.5">
+                            {keys.map((key) => <li key={key}><Badge>{label(key)}</Badge></li>)}
+                          </ul>
+                        </section>
+                      ))}
+                    </div>
+                  ) : <p className="mt-4 text-[13px] text-ink-faint">No permissions — can only see their own work.</p>
+                })()}
               </li>
             ))}
           </ul>
@@ -406,57 +430,54 @@ function DepartmentsTab() {
       )}
       <DataState state={list} isEmpty={(d) => d.departments.length === 0} empty="No departments yet.">
         {(d) => (
-          <div className="rounded-lg border border-line bg-surface">
-            <TableWrap>
-              <table className="data-table min-w-[640px]">
-                <thead>
-                  <tr>
-                    <th scope="col">Department</th>
-                    <th scope="col">Head</th>
-                    <th scope="col" className="num">People</th>
-                    <th scope="col" className="num">Projects</th>
-                    {manage && <th scope="col"><span className="sr-only">Actions</span></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.departments.map((x) => (
-                    <tr key={x.id}>
-                      <th scope="row" className="font-normal">
-                        <span className="font-medium">{x.name}</span>
-                        {x.description && <span className="block text-[12px] text-ink-faint">{x.description}</span>}
-                      </th>
-                      <td>
-                        <PersonLink person={x.head} />
-                      </td>
-                      <td className="num">{x.members}</td>
-                      <td className="num">{x.projects}</td>
-                      {manage && (
-                        <td className="text-right whitespace-nowrap">
-                          <Button size="sm" variant="ghost" onClick={() => setEditing(x)}>
-                            Edit
-                          </Button>
-                          {x.members === 0 && x.projects === 0 && (
-                            <ConfirmButton
-                              size="sm"
-                              variant="ghost"
-                              label="Delete"
-                              title={`Delete ${x.name}?`}
-                              confirm="This department is empty, so it can be deleted."
-                              onConfirm={async () => {
-                                await departmentsApi.remove(x.id)
-                                toast(`${x.name} deleted`)
-                                list.reload()
-                              }}
-                            />
-                          )}
-                        </td>
-                      )}
+          <>
+            <div className="hidden rounded-lg border border-line bg-surface sm:block">
+              <TableWrap>
+                <table className="data-table min-w-[640px]">
+                  <thead>
+                    <tr>
+                      <th scope="col">Department</th>
+                      <th scope="col">Head</th>
+                      <th scope="col" className="num">People</th>
+                      <th scope="col" className="num">Projects</th>
+                      {manage && <th scope="col"><span className="sr-only">Actions</span></th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
-          </div>
+                  </thead>
+                  <tbody>
+                    {d.departments.map((x) => (
+                      <tr key={x.id}>
+                        <th scope="row" className="font-normal"><span className="font-medium">{x.name}</span>{x.description && <span className="block text-[12px] text-ink-faint">{x.description}</span>}</th>
+                        <td><PersonLink person={x.head} /></td>
+                        <td className="num">{x.members}</td>
+                        <td className="num">{x.projects}</td>
+                        {manage && (
+                          <td className="text-right whitespace-nowrap">
+                            <Button size="sm" variant="ghost" onClick={() => setEditing(x)}>Edit</Button>
+                            {x.members === 0 && x.projects === 0 && <ConfirmButton size="sm" variant="ghost" label="Delete" title={`Delete ${x.name}?`} confirm="This department is empty, so it can be deleted." onConfirm={async () => { await departmentsApi.remove(x.id); toast(`${x.name} deleted`); list.reload() }} />}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
+            </div>
+            <ul className="mobile-records sm:hidden">
+              {d.departments.map((x) => (
+                <li key={x.id} className="mobile-record">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><h2 className="font-semibold">{x.name}</h2>{x.description && <p className="mt-1 text-[13px] text-ink-soft">{x.description}</p>}</div>
+                    {manage && <Button size="sm" variant="ghost" onClick={() => setEditing(x)}>Edit</Button>}
+                  </div>
+                  <div className="mobile-record-grid">
+                    <div><span className="mobile-record-label">Department head</span><span className="mobile-record-value"><PersonLink person={x.head} /></span></div>
+                    <div><span className="mobile-record-label">People · projects</span><span className="mobile-record-value">{x.members} · {x.projects}</span></div>
+                  </div>
+                  {manage && x.members === 0 && x.projects === 0 && <div className="mt-3"><ConfirmButton size="sm" variant="ghost" label="Delete department" title={`Delete ${x.name}?`} confirm="This department is empty, so it can be deleted." onConfirm={async () => { await departmentsApi.remove(x.id); toast(`${x.name} deleted`); list.reload() }} /></div>}
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </DataState>
       {editing && <DepartmentDialog department={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} onSaved={list.reload} />}

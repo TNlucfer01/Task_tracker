@@ -39,6 +39,12 @@ export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
             void run(async () => onSignedIn((await auth.login(identifier, password)).user))
           }}
         >
+          <p className="flex items-center gap-2 text-[15px] font-semibold lg:hidden">
+            <span className="grid size-7 place-items-center rounded-md bg-primary text-on-primary">
+              <Icon name="check" size={16} strokeWidth={2.5} />
+            </span>
+            Task Tracker
+          </p>
           <div>
             <h1 className="text-[26px] leading-8 font-semibold">Sign in</h1>
             <p className="mt-1 text-ink-soft">Use the username or email your admin gave you.</p>

@@ -59,53 +59,56 @@ export function Person({ id }: { id: number }) {
 
               <Panel title="Hours per day">
                 <HoursStrip days={calendar} />
-                <p className="mt-2 text-[12px] text-ink-faint">Darker means a fuller day. Hover a square for the exact hours.</p>
+                <p className="mt-2 text-[12px] text-ink-faint">Darker means more clocked time. Blank days mean no clock session was recorded; hover a square for exact hours.</p>
               </Panel>
 
               <Panel title="Tasks" actions={<Segmented label="Tasks shown" value={show} onChange={setShow} options={[{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }]} />} padded={false}>
                 {tasks.length === 0 ? (
                   <p className="p-5 text-ink-soft">{show === 'open' ? 'No open tasks.' : 'No finished tasks yet.'}</p>
                 ) : (
-                  <TableWrap>
-                    <table className="data-table min-w-[760px]">
-                      <thead>
-                        <tr>
-                          <th scope="col">Task</th>
-                          <th scope="col">Status</th>
-                          <th scope="col">Priority</th>
-                          <th scope="col">{show === 'open' ? 'Deadline' : 'Finished'}</th>
-                          <th scope="col" className="num">Time / estimate</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tasks.map((t) => (
-                          <tr key={t.id}>
-                            <th scope="row" className="font-normal">
-                              <a href={href('tasks', t.id)} className="font-medium">
-                                {t.title}
-                              </a>
-                              <span className="block text-[12px] text-ink-faint">
-                                {t.key} · {t.project.name}
-                              </span>
-                            </th>
-                            <td>
-                              <StatusBadge status={t.status} />
-                            </td>
-                            <td>
-                              <PriorityTag priority={t.priority} />
-                            </td>
-                            <td className="whitespace-nowrap">
-                              {show === 'open' ? formatDate(t.deadline) : formatDate(t.completed_at)}
-                              {t.overdue && <OverdueTag />}
-                            </td>
-                            <td className="num">
-                              {formatMinutes(t.actual_minutes)} / {formatMinutes(t.estimate_minutes)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </TableWrap>
+                  <>
+                    <div className="hidden sm:block">
+                      <TableWrap>
+                        <table className="data-table min-w-[760px]">
+                          <thead>
+                            <tr><th scope="col">Task</th><th scope="col">Status</th><th scope="col">Priority</th><th scope="col">{show === 'open' ? 'Deadline' : 'Finished'}</th><th scope="col" className="num">Time / estimate</th></tr>
+                          </thead>
+                          <tbody>
+                            {tasks.map((t) => (
+                              <tr key={t.id}>
+                                <th scope="row" className="font-normal">
+                                  <a href={href('tasks', t.id)} className="font-medium">{t.title}</a>
+                                  <span className="block text-[12px] text-ink-faint">{t.key} · {t.project.name}</span>
+                                </th>
+                                <td><StatusBadge status={t.status} /></td>
+                                <td><PriorityTag priority={t.priority} /></td>
+                                <td className="whitespace-nowrap">{show === 'open' ? formatDate(t.deadline) : formatDate(t.completed_at)}{t.overdue && <OverdueTag />}</td>
+                                <td className="num">{formatMinutes(t.actual_minutes)} / {formatMinutes(t.estimate_minutes)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </TableWrap>
+                    </div>
+                    <ul className="mobile-records p-3 sm:hidden">
+                      {tasks.map((t) => (
+                        <li key={t.id} className="mobile-record">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <a href={href('tasks', t.id)} className="font-semibold text-ink">{t.title}</a>
+                              <p className="mt-1 text-[13px] text-ink-faint">{t.key} · {t.project.name}</p>
+                            </div>
+                            <StatusBadge status={t.status} />
+                          </div>
+                          <div className="mobile-record-grid">
+                            <div><span className="mobile-record-label">Priority</span><PriorityTag priority={t.priority} /></div>
+                            <div><span className="mobile-record-label">{show === 'open' ? 'Deadline' : 'Finished'}</span><span className="mobile-record-value">{show === 'open' ? formatDate(t.deadline) : formatDate(t.completed_at)}{t.overdue && <OverdueTag />}</span></div>
+                            <div><span className="mobile-record-label">Time / estimate</span><span className="mobile-record-value">{formatMinutes(t.actual_minutes)} / {formatMinutes(t.estimate_minutes)}</span></div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </Panel>
 

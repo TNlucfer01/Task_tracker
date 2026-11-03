@@ -89,7 +89,7 @@ export function Home() {
 
         <KpiStrip
           items={[
-            { label: 'Open tasks', value: open.length, href: href('tasks', { assignee: 'me' }) },
+            { label: 'My open tasks', value: open.length, href: href('tasks', { assignee: 'me' }) },
             { label: 'Overdue', value: open.filter((t) => t.overdue).length, tone: open.some((t) => t.overdue) ? 'danger' : undefined, href: href('tasks', { assignee: 'me', overdue: 'true' }) },
             { label: 'Sent back', value: open.filter((t) => t.status === 'rework').length, hint: 'Rework after review' },
             { label: 'Waiting for review', value: open.filter((t) => t.status === 'in_review').length },
