@@ -5,7 +5,7 @@ import { takeFlash } from '../../lib/flash'
 import { formatHours, formatPct, formatRating, lastDays } from '../../lib/format'
 import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
-import { getPeople, type DayRange } from '../../utils/api'
+import { getPeople, type DayRange } from '../../api/admin/dashboard'
 
 export function People() {
   const [range, setRange] = useState<DayRange>(() => lastDays(30))

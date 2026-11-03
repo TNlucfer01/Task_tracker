@@ -1,4 +1,5 @@
-import type { DayRange, ProjectStatus, TaskStatus } from '../utils/api'
+import type { DayRange, ProjectStatus } from '../api/admin/dashboard'
+import type { TaskStatus } from '../api/types'
 
 const TZ = 'Asia/Kolkata'
 

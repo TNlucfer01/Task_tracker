@@ -3,7 +3,7 @@ import { DataState, Meter, OverdueTag, PageHeader, ProjectStatusPill, Segmented,
 import { formatDate, plural, projectStatusLabel, projectStatuses, taskStatusLabel, taskStatuses } from '../../lib/format'
 import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
-import { getProjects, type ProjectStatus } from '../../utils/api'
+import { getProjects, type ProjectStatus } from '../../api/admin/dashboard'
 
 const filterOptions: { value: ProjectStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },

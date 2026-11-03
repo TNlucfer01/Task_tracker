@@ -1,7 +1,8 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { lastDays, projectStatusLabel, taskStatusLabel } from '../lib/format'
 import { projectStatusDot, taskStatusDot, taskStatusText } from '../lib/status'
-import type { DayRange, ProjectStatus, TaskStatus } from '../utils/api'
+import type { DayRange, ProjectStatus } from '../api/admin/dashboard'
+import type { TaskStatus } from '../api/types'
 
 
 const buttonStyles = {

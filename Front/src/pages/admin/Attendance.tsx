@@ -3,7 +3,7 @@ import { DataState, LiveDot, Muted, PageHeader, RangePicker, Section, SectionHea
 import { daysBetween, formatDay, formatHours, formatMinutes, formatTime, lastDays, minutesSince } from '../../lib/format'
 import { href } from '../../lib/router'
 import { useApi, useNow } from '../../lib/useApi'
-import { getAttendance, getPeople, type DayRange } from '../../utils/api'
+import { getAttendance, getPeople, type DayRange } from '../../api/admin/dashboard'
 
 // Timesheet shading. An 8-hour day lands in the third band.
 const shades = [

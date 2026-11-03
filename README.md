@@ -24,6 +24,14 @@
 
    Admins land on the team dashboard; everyone else sees their own tasks.
 
+## Code structure
+
+- `Back/app.js` configures Express and exports the app; `Back/index.js` starts the HTTP server.
+- `Back/routes/index.js` mounts API route groups, with shared authentication and error middleware under `Back/middleware/`.
+- `Back/routes/admin/dashboard/` groups dashboard endpoints by domain; `shared.js` contains common queries and calculations.
+- `Front/src/api/` separates the request client, shared API types, authentication, tasks, and admin APIs. Page-level code imports from the relevant feature module. `Front/src/utils/api.ts` remains as a compatibility barrel.
+- `Front/src/pages/admin/`, `Front/src/components/`, and `Front/src/lib/` contain admin screens, reusable UI, and shared client utilities respectively.
+
 ## Custom login
 
 Login uses the Supabase `users` table (`id`, `name`, `email`, `password_hash`, `role`, `is_active`). `name` is the username; email is unique (case-insensitive), and passwords must be bcrypt hashes. There is no public sign-up route.

@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useApi } from '../lib/useApi'
-import {
-  ApiError,
-  createUser,
-  deleteUser,
-  getDepartments,
-  updateUser,
-  type ManagedUser,
-  type Role,
-  type UserChanges,
-} from '../utils/api'
+import { ApiError } from '../api/client'
+import { createUser, deleteUser, getDepartments, updateUser, type ManagedUser, type UserChanges } from '../api/admin/users'
+import type { Role } from '../api/types'
 import { Button } from './ui'
 
 export type EditableUser = {

@@ -9,7 +9,9 @@ import { People } from './pages/admin/People'
 import { Person } from './pages/admin/Person'
 import { Projects } from './pages/admin/Projects'
 import { Tasks } from './pages/admin/Tasks'
-import { ApiError, getCurrentUser, logout, type User } from './utils/api'
+import { getCurrentUser, logout } from './api/auth'
+import { ApiError } from './api/client'
+import type { User } from './api/types'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)

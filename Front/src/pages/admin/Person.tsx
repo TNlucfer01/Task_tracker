@@ -32,7 +32,7 @@ import {
 import { setFlash } from '../../lib/flash'
 import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
-import { getPerson, type DashboardTask, type DayRange, type PersonDetail } from '../../utils/api'
+import { getPerson, type DashboardTask, type DayRange, type PersonDetail } from '../../api/admin/dashboard'
 
 export function Person({ id, myId }: { id: number; myId: number }) {
   const [range, setRange] = useState<DayRange>(() => lastDays(30))

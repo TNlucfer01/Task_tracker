@@ -1,4 +1,5 @@
-import type { ProjectStatus, TaskStatus } from '../utils/api'
+import type { ProjectStatus } from '../api/admin/dashboard'
+import type { TaskStatus } from '../api/types'
 
 // Class strings are written out in full so Tailwind can find them.
 export const taskStatusDot: Record<TaskStatus, string> = {

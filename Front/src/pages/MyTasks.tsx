@@ -2,7 +2,8 @@ import { Brand } from '../components/AppShell'
 import { Button, DataState, OverdueTag, TaskStatusPill } from '../components/ui'
 import { formatDate, plural } from '../lib/format'
 import { useApi, useNow } from '../lib/useApi'
-import { getTasks, type User } from '../utils/api'
+import { getTasks } from '../api/tasks'
+import type { User } from '../api/types'
 
 export function MyTasks({ user, onSignOut, signingOut }: { user: User; onSignOut: () => void; signingOut: boolean }) {
   const tasks = useApi(getTasks, 'my-tasks')

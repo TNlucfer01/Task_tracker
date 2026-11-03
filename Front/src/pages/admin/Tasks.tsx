@@ -14,7 +14,8 @@ import {
 import { formatDate, formatMinutes, lastDays, plural, taskStatusLabel, taskStatuses } from '../../lib/format'
 import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
-import { getDashboardTasks, getPeople, getProjects, type TaskFilters, type TaskStatus } from '../../utils/api'
+import { getDashboardTasks, getPeople, getProjects, type TaskFilters } from '../../api/admin/dashboard'
+import type { TaskStatus } from '../../api/types'
 
 // Route params pre-fill the filters: #/tasks/overdue, #/tasks/project/3, #/tasks/person/6
 function filtersFromRoute(params: string[]): TaskFilters {

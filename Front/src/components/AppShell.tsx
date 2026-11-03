@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { href } from '../lib/router'
-import type { User } from '../utils/api'
+import type { User } from '../api/types'
 import { Button } from './ui'
 
 const nav = [

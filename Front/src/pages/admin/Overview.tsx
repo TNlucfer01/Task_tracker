@@ -17,7 +17,7 @@ import {
 import { href } from '../../lib/router'
 import { taskStatusDot } from '../../lib/status'
 import { useApi, useNow } from '../../lib/useApi'
-import { getAttendance, getOverview, getRanking, type RankMetric, type RankedUser } from '../../utils/api'
+import { getAttendance, getOverview, getRanking, type RankMetric, type RankedUser } from '../../api/admin/dashboard'
 
 const metrics: { key: RankMetric; label: string; show: (u: RankedUser) => string }[] = [
   { key: 'tasks_done', label: 'Tasks done', show: (u) => plural(u.tasks_done, 'task') },

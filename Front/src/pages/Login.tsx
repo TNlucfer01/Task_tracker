@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { ClockMark } from '../components/AppShell'
 import { Button } from '../components/ui'
-import { login, type User } from '../utils/api'
+import { login } from '../api/auth'
+import type { User } from '../api/types'
 
 const inputClass =
   'min-h-11 w-full rounded-md border border-line-strong bg-panel px-3 text-ink focus:border-stamp focus:outline-none focus:ring-3 focus:ring-stamp/15'
