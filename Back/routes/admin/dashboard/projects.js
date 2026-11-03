@@ -13,24 +13,43 @@ router.get("/projects", async (req, res) => {
 
   let projectsQuery = supabase
     .from("projects")
-    .select("id, name, description, status, deadline, created_at, completed_at, creator:users(id, name)")
+    .select("id, name, description:description_md, status, deadline, created_at, completed_at, department_id, creator:users!projects_created_by_fkey(id, name)")
     .order("created_at", { ascending: false });
   if (status) projectsQuery = projectsQuery.eq("status", status);
 
-  const [projects, tasks] = await Promise.all([
+  const [projects, tasks, users] = await Promise.all([
     run(projectsQuery),
-    run(supabase.from("tasks").select("project_id, status, deadline")),
+    run(supabase.from("tasks").select("project_id, status, deadline, assignee_id")),
+    run(supabase.from("users").select("id, department_id")),
   ]);
 
+  const authUser = res.locals.authUser;
+  const visibleUserIds = new Set(users.data.filter((user) =>
+    authUser.scope === "all" ||
+    (authUser.scope === "own" ? user.id === authUser.id : user.department_id === authUser.department_id),
+  ).map((user) => user.id));
+  const projectById = new Map(projects.data.map((project) => [project.id, project]));
+  const visibleTasks = tasks.data.filter((task) => {
+    if (authUser.scope === "all") return true;
+    if (authUser.scope === "own") return task.assignee_id === authUser.id;
+    return visibleUserIds.has(task.assignee_id) ||
+      projectById.get(task.project_id)?.department_id === authUser.department_id;
+  });
+  const visibleProjectIds = new Set(visibleTasks.map((task) => task.project_id));
+  const visibleProjects = projects.data.filter((project) =>
+    authUser.scope === "all" ||
+    visibleProjectIds.has(project.id) ||
+    (authUser.scope === "department" && project.department_id === authUser.department_id),
+  );
   const tasksByProject = new Map();
-  for (const task of tasks.data) {
+  for (const task of visibleTasks) {
     if (!tasksByProject.has(task.project_id)) tasksByProject.set(task.project_id, []);
     tasksByProject.get(task.project_id).push(task);
   }
 
   const now = Date.now();
   res.json({
-    projects: projects.data.map((project) => {
+    projects: visibleProjects.map((project) => {
       const projectTasks = tasksByProject.get(project.id) ?? [];
       const done = projectTasks.filter((task) => task.status === "done").length;
       return {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useApi } from '../lib/useApi'
 import { ApiError } from '../api/client'
-import { createUser, deleteUser, getDepartments, updateUser, type ManagedUser, type UserChanges } from '../api/admin/users'
+import { createUser, deleteUser, getDepartments, getRoles, updateUser, type ManagedRole, type ManagedUser, type UserChanges } from '../api/admin/users'
 import type { Role } from '../api/types'
 import { Button } from './ui'
 
@@ -10,6 +10,8 @@ export type EditableUser = {
   name: string
   email: string
   role: Role
+  role_id: number
+  title: string | null
   is_active: boolean
   department: { id: number; name: string } | null
 }
@@ -18,6 +20,7 @@ type Props = {
   // Omit `user` to add a new person.
   user?: EditableUser
   isSelf?: boolean
+  canManageRoles?: boolean
   onClose: () => void
   onSaved: (user: ManagedUser, message: string) => void
   onDeleted?: (name: string) => void
@@ -27,14 +30,16 @@ const inputClass =
   'min-h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-ink focus:border-primary focus:outline-none focus:ring-3 focus:ring-primary/15 disabled:bg-canvas disabled:text-ink-soft'
 
 // Add or edit a person. Rendered only while open; it opens itself as a modal on mount.
-export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }: Props) {
+export function UserDialog({ user, isSelf = false, canManageRoles = false, onClose, onSaved, onDeleted }: Props) {
   const editing = Boolean(user)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const departments = useApi(getDepartments, 'departments')
+  const roles = useApi(getRoles, 'roles')
 
   const [name, setName] = useState(user?.name ?? '')
   const [email, setEmail] = useState(user?.email ?? '')
-  const [role, setRole] = useState<Role>(user?.role ?? 'user')
+  const [roleId, setRoleId] = useState(user?.role_id ?? 0)
+  const [title, setTitle] = useState(user?.title ?? '')
   const [departmentId, setDepartmentId] = useState<number | null>(user?.department?.id ?? null)
   const [active, setActive] = useState(user?.is_active ?? true)
   const [password, setPassword] = useState('')
@@ -47,6 +52,12 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
     return () => dialog?.close()
   }, [])
 
+  const roleOptions = roles.data?.roles ?? []
+  const defaultRole = roleOptions.find((role) => role.name.toLowerCase() === 'employee') ?? roleOptions[0]
+  const selectedRoleId = roleId || defaultRole?.id || 0
+  const assignableRoles = roleOptions.filter((role) => canManageRoles || role.scope === 'own')
+  const selectedRole = roleOptions.find((role) => role.id === selectedRoleId)
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
@@ -54,7 +65,8 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
     if (!user) {
       setSaving(true)
       try {
-        const { user: created } = await createUser({ name, email, password, role, department_id: departmentId })
+        if (!selectedRoleId) throw new Error('Choose a role before adding this person.')
+        const { user: created } = await createUser({ name, email, password, role_id: selectedRoleId, department_id: departmentId, title: title || null })
         onSaved(created, `${created.name} was added. They can sign in with the password you set.`)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not add this person.')
@@ -67,8 +79,9 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
     const changes: UserChanges = {}
     if (name.trim() !== user.name) changes.name = name
     if (email.trim().toLowerCase() !== user.email.toLowerCase()) changes.email = email
-    if (role !== user.role) changes.role = role
+    if (selectedRoleId !== user.role_id && canManageRoles && !isSelf) changes.role_id = selectedRoleId
     if (departmentId !== (user.department?.id ?? null)) changes.department_id = departmentId
+    if (title.trim() !== (user.title ?? '')) changes.title = title.trim() || null
     if (active !== user.is_active) changes.is_active = active
     if (password) changes.password = password
 
@@ -141,37 +154,40 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
           )}
         </Field>
 
-        <fieldset>
-          <legend className="mb-2 text-sm font-medium">Role</legend>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(
-              [
-                { value: 'user', label: 'Team member', hint: 'Sees their own tasks' },
-                { value: 'admin', label: 'Admin', hint: 'Sees and manages everyone' },
-              ] as const
-            ).map((option) => (
-              <label
-                key={option.value}
-                className={`flex gap-2.5 rounded-md border border-line-strong px-3 py-2.5 has-checked:border-primary has-checked:bg-primary-tint ${isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-              >
-                <input
-                  type="radio"
-                  name="role"
-                  value={option.value}
-                  checked={role === option.value}
-                  onChange={() => setRole(option.value)}
-                  disabled={isSelf}
-                  className="mt-1 accent-primary"
-                />
-                <span>
-                  <span className="block text-sm font-medium">{option.label}</span>
-                  <span className="block text-xs text-ink-soft">{option.hint}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-          {isSelf && <p className="mt-1.5 text-xs text-ink-soft">You can't change your own role.</p>}
-        </fieldset>
+        <Field label="Job title">
+          {(id) => (
+            <input id={id} className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} />
+          )}
+        </Field>
+
+        <Field label="Role" hint={isSelf ? "You can't change your own role." : undefined}>
+          {(id) => (
+            <select
+              id={id}
+              className={inputClass}
+              value={selectedRoleId || ''}
+              onChange={(e) => setRoleId(Number(e.target.value))}
+              disabled={!roles.data || (editing && (!canManageRoles || isSelf))}
+              required
+            >
+              <option value="" disabled>{roles.loading ? 'Loading roles…' : 'Choose a role'}</option>
+              {assignableRoles.map((role: ManagedRole) => (
+                <option key={role.id} value={role.id}>{role.name} · {role.scope}</option>
+              ))}
+              {selectedRole && !assignableRoles.some((role) => role.id === selectedRole.id) && (
+                <option value={selectedRole.id}>{selectedRole.name} · {selectedRole.scope}</option>
+              )}
+            </select>
+          )}
+        </Field>
+        {roles.error && (
+          <p className="flex flex-wrap items-center gap-x-3 text-xs text-danger" role="alert">
+            Couldn't load roles: {roles.error}
+            <button type="button" onClick={roles.reload} className="cursor-pointer font-medium underline underline-offset-2">
+              Try again
+            </button>
+          </p>
+        )}
 
         <Field
           label="Department"

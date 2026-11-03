@@ -34,7 +34,7 @@ import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
 import { getPerson, type DashboardTask, type DayRange, type PersonDetail } from '../../api/admin/dashboard'
 
-export function Person({ id, myId }: { id: number; myId: number }) {
+export function Person({ id, myId, canManageRoles, canManagePeople }: { id: number; myId: number; canManageRoles: boolean; canManagePeople: boolean }) {
   const [range, setRange] = useState<DayRange>(() => lastDays(30))
   const person = useApi(() => getPerson(id, range), `person-${id}-${range.from}-${range.to}`)
   const [editing, setEditing] = useState(false)
@@ -49,11 +49,12 @@ export function Person({ id, myId }: { id: number; myId: number }) {
       <DataState state={person}>
         {(data) => (
           <>
-            <PersonView data={data} range={range} onRange={setRange} onEdit={() => setEditing(true)} />
-            {editing && (
+            <PersonView data={data} range={range} onRange={setRange} onEdit={canManagePeople ? () => setEditing(true) : undefined} />
+            {editing && canManagePeople && (
               <UserDialog
                 user={data.user}
                 isSelf={data.user.id === myId}
+                canManageRoles={canManageRoles}
                 onClose={() => setEditing(false)}
                 onSaved={(_, message) => {
                   setEditing(false)
@@ -82,7 +83,7 @@ function PersonView({
   data: PersonDetail
   range: DayRange
   onRange: (r: DayRange) => void
-  onEdit: () => void
+  onEdit?: () => void
 }) {
   const { user } = data
 
@@ -90,11 +91,11 @@ function PersonView({
     <>
       <PageHeader
         title={user.name}
-        actions={<Button onClick={onEdit}>Edit details</Button>}
+        actions={onEdit ? <Button onClick={onEdit}>Edit details</Button> : undefined}
         lede={
           <>
-            {user.role === 'admin' ? 'Admin, ' : ''}
-            {user.department?.name ?? 'No department'}, {user.email}
+            {user.role_name}
+            {user.department?.name ? `, ${user.department.name}` : ', No department'}, {user.email}
             <span
               className={`ml-3 inline-flex items-center gap-2 font-medium ${user.clocked_in ? 'text-status-done' : 'text-ink-soft'}`}
             >
@@ -150,7 +151,7 @@ function PersonView({
                   <tr key={t.id}>
                     <th scope="row">
                       {t.name}
-                      <Sub>{t.project?.name ?? 'No project'}</Sub>
+                      <Sub>{t.number ? `#${t.number} · ` : ''}{t.priority} priority · {t.project?.name ?? 'No project'}</Sub>
                     </th>
                     <td>
                       <TaskStatusPill status={t.status} />
@@ -213,8 +214,8 @@ function PersonView({
               {data.recent_reviews.map((r) => (
                 <li key={r.id} className="border-b border-line py-3.5">
                   <div className="flex items-baseline justify-between gap-4">
-                    <strong className="font-medium">{r.task.name}</strong>
-                    <Stars rating={r.rating} />
+                    <strong className="font-medium">{r.task?.name ?? 'Deleted task'}</strong>
+                    {r.rating === null ? <span className="text-sm text-ink-faint">No rating</span> : <Stars rating={r.rating} />}
                   </div>
                   {r.comments && <p className="mt-1 text-ink">{r.comments}</p>}
                   <Sub>

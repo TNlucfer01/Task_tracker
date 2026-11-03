@@ -1,4 +1,6 @@
-// Use after requireAuth. Example: router.use(requireRole("admin"))
+const { roleKey } = require("../utils/authorization");
+
+// Use after requireAuth. Role names are normalized to stable keys from the database.
 function requireRole(...allowedRoles) {
   return function checkRole(req, res, next) {
     const role = res.locals.authUser?.role;
@@ -7,7 +9,7 @@ function requireRole(...allowedRoles) {
       return res.status(401).json({ error: "Authentication required." });
     }
 
-    if (!allowedRoles.includes(role)) {
+    if (!allowedRoles.map(roleKey).includes(role)) {
       return res.status(403).json({ error: "You do not have access to this resource." });
     }
 

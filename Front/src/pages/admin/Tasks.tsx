@@ -97,6 +97,7 @@ export function Tasks({ params }: { params: string[] }) {
                     <th scope="col">Task</th>
                     <th scope="col">Assigned to</th>
                     <th scope="col">Status</th>
+                    <th scope="col">Priority</th>
                     <th scope="col">Deadline</th>
                     <th scope="col" className="num">Time spent</th>
                     <th scope="col" className="num">Estimate</th>
@@ -121,6 +122,7 @@ export function Tasks({ params }: { params: string[] }) {
                         <td>
                           <TaskStatusPill status={t.status} />
                         </td>
+                        <td className="capitalize">{t.priority}</td>
                         <td className="whitespace-nowrap">
                           {formatDate(t.deadline)}
                           {t.overdue && <OverdueTag />}

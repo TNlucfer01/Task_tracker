@@ -22,7 +22,7 @@
    npm run dev
    ```
 
-   Admins land on the team dashboard; everyone else sees their own tasks.
+   Users with `dashboard.view` land on the dashboard; other users see their assigned tasks.
 
 ## Code structure
 
@@ -34,23 +34,23 @@
 
 ## Custom login
 
-Login uses the Supabase `users` table (`id`, `name`, `email`, `password_hash`, `role`, `is_active`). `name` is the username; email is unique (case-insensitive), and passwords must be bcrypt hashes. There is no public sign-up route.
+Login uses the Supabase `users` table and resolves each user's role from `roles` and `role_permissions`. The database role name, scope, and permissions are reloaded on every request. `name` is the username; email is unique (case-insensitive), and passwords are bcrypt hashes. There is no public sign-up route.
 
-The backend issues an eight-hour JWT in an HttpOnly cookie and verifies it on protected routes. The `GET /api/tasks` endpoint returns only tasks whose `assigned_to` is the signed-in user's `id`.
+The backend issues an eight-hour JWT in an HttpOnly cookie and verifies it on protected routes. The `GET /api/tasks` endpoint returns only tasks whose `assignee_id` is the signed-in user's `id`.
 
 Keep `SUPABASE_SECRET_KEY` and `JWT_SECRET` only in `Back/.env`; never add them to frontend environment variables or commit `.env` files.
 
 ## Roles
 
-Every user has a `role` of `admin` or `user`. Login returns it, and `GET /api/auth/me` returns the current one. On every request the backend re-reads the user's role and `is_active` flag from the database, so deactivating someone or changing their role takes effect immediately. Deactivated users cannot sign in.
+Roles are data-driven. The current database includes Admin, Manager, Team lead, HR, and Employee roles, with `all`, `department`, or `own` data scopes and explicit permissions. Login and `GET /api/auth/me` return the user's role, scope, and permissions. Deactivating a user or changing their role takes effect immediately; deactivated users cannot sign in.
 
-- `/api/admin/*` requires an admin.
-- `/api/user/*` requires a regular user.
+- `/api/admin/*` requires `dashboard.view`; user and department management endpoints also check their specific permissions.
+- `/api/user/*` requires `time.track`.
 - `/api/tasks` returns the signed-in user's assigned tasks.
 
 ## Admin dashboard API
 
-All routes are `GET`, admin only, and under `/api/admin/dashboard`. `from` and `to` are calendar days (`YYYY-MM-DD`) in India time, and default to the last 30 days.
+All routes are `GET`, require `dashboard.view`, and are under `/api/admin/dashboard`. Results are restricted to the signed-in user's role scope. `from` and `to` are calendar days (`YYYY-MM-DD`) in India time, and default to the last 30 days.
 
 | Route | Returns |
 | --- | --- |
@@ -58,27 +58,28 @@ All routes are `GET`, admin only, and under `/api/admin/dashboard`. `from` and `
 | `/users?role=user\|admin\|all&from&to` | One row per user: tasks done, open and overdue tasks, on-time %, average rating, rework count, hours clocked, clocked-in status |
 | `/users/:id?from&to` | The same summary for one user, plus their tasks (with actual vs estimated minutes), daily hours, recent sessions, timers and reviews |
 | `/projects?status` | Each project with task counts, overdue tasks and progress % |
-| `/tasks?status&project_id&assigned_to&overdue=true&limit` | Tasks with project, assignee and actual minutes (default limit 100, max 500) |
+| `/tasks?status&project_id&assigned_to&overdue=true&limit` | Tasks with project, assignee and actual minutes (default limit 100, max 500); `assigned_to` filters the database's `assignee_id` |
 | `/rank?by=tasks_done\|on_time_pct\|avg_rating\|hours_clocked\|rework_bounces&from&to` | Active users ordered by one metric; users with no data for it are listed last with `rank: null` |
 | `/attendance?from&to` | Who is clocked in now, and hours per user per day |
 
 ## Managing users (admin)
 
-In the dashboard, use **Add person** on the People page, or **Edit details** on a person's page. The API is under `/api/admin/users`, admin only:
+In the dashboard, use **Add person** on the People page, or **Edit details** on a person's page. The API is under `/api/admin/users` and requires `people.manage` for changes:
 
 | Method and route | Does |
 | --- | --- |
-| `GET /` | List users (`?role=admin\|user`, `?active=true\|false`) |
+| `GET /roles` | List available roles and their permissions |
+| `GET /` | List users (`?role=<role name or id>`, `?active=true\|false`) |
 | `GET /:id` | One user |
-| `POST /` | Create `{ name, email, password, role?, department_id? }` |
-| `PATCH /:id` | Change any of `name`, `email`, `role`, `department_id`, `is_active`, `password` |
+| `POST /` | Create `{ name, email, password, role_id?, department_id?, title? }` (defaults to Employee) |
+| `PATCH /:id` | Change any of `name`, `email`, `role_id`, `department_id`, `title`, `is_active`, `password` |
 | `DELETE /:id` | Permanently delete a user with no history |
 
 Rules:
 
 - Names are also usernames, so they must be unique (ignoring case) and can't contain `@`. Emails are unique, and passwords are 8 to 128 characters.
 - People with tasks, hours or reviews can't be deleted, because that would erase their history. Deactivate them instead (`is_active: false`): they can't sign in, and everything they did is kept.
-- Admins can't change their own role, deactivate themselves or delete themselves, so you can't lock yourself out.
+- Users can't change their own role, deactivate themselves or delete themselves, so they can't lock themselves out.
 - Passwords are stored as bcrypt hashes and are never returned by the API.
 
 `GET /api/admin/department` lists departments for the form's picker.

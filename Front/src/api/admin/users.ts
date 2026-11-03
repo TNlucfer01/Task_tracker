@@ -10,21 +10,39 @@ export type ManagedUser = {
   name: string
   email: string
   role: Role
+  role_id: number
+  role_key: string
+  scope: 'all' | 'department' | 'own'
   is_active: boolean
   department_id: number | null
+  title: string | null
   department: Ref | null
   created_at: string
+}
+
+export type ManagedRole = {
+  id: number
+  name: string
+  description: string | null
+  scope: 'all' | 'department' | 'own'
+  is_system: boolean
+  permissions: string[]
 }
 
 export type NewUser = {
   name: string
   email: string
   password: string
-  role: Role
+  role_id: number
   department_id: number | null
+  title?: string | null
 }
 
 export type UserChanges = Partial<Omit<NewUser, 'password'>> & { is_active?: boolean; password?: string }
+
+export function getRoles() {
+  return request<{ roles: ManagedRole[] }>('/api/admin/users/roles')
+}
 
 export function getDepartments() {
   return request<{ departments: Department[] }>('/api/admin/department')

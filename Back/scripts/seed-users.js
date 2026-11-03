@@ -27,6 +27,13 @@ async function exists(column, value) {
 
 async function main() {
   const passwordHash = await bcrypt.hash(password, 12);
+  const { data: role, error: roleError } = await supabase
+    .from("roles")
+    .select("id")
+    .ilike("name", "Employee")
+    .maybeSingle();
+  if (roleError) throw roleError;
+  if (!role) throw new Error('The "Employee" role is missing from the roles table.');
   let created = 0;
 
   for (const user of dummyUsers) {
@@ -39,7 +46,7 @@ async function main() {
 
     const { data, error } = await supabase
       .from("users")
-      .insert({ name: user.name, email, password_hash: passwordHash })
+      .insert({ name: user.name, email, password_hash: passwordHash, role_id: role.id })
       .select("id, name, email")
       .single();
 

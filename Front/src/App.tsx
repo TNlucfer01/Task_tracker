@@ -66,7 +66,7 @@ export default function App() {
     )
   }
 
-  if (user.role !== 'admin') {
+  if (!user.permissions.includes('dashboard.view')) {
     return <MyTasks user={user} onSignOut={handleSignOut} signingOut={signingOut} />
   }
 
@@ -77,12 +77,17 @@ function AdminApp({ user, onSignOut, signingOut }: { user: User; onSignOut: () =
   const [section = '', ...params] = useRoute()
 
   let page
+  const canViewPeople = user.permissions.includes('people.view')
   switch (section) {
     case '':
       page = <Overview />
       break
     case 'people':
-      page = params[0] && Number(params[0]) ? <Person key={params[0]} id={Number(params[0])} myId={user.id} /> : <People />
+      page = canViewPeople
+        ? params[0] && Number(params[0])
+          ? <Person key={params[0]} id={Number(params[0])} myId={user.id} canManageRoles={user.permissions.includes('roles.manage')} canManagePeople={user.permissions.includes('people.manage')} />
+          : <People canManageRoles={user.permissions.includes('roles.manage')} canManagePeople={user.permissions.includes('people.manage')} />
+        : <p className="py-10 text-ink-soft" role="alert">You don't have permission to view people.</p>
       break
     case 'projects':
       page = <Projects />

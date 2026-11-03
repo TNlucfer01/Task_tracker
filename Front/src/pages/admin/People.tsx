@@ -8,7 +8,7 @@ import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
 import { getPeople, type DayRange } from '../../api/admin/dashboard'
 
-export function People() {
+export function People({ canManageRoles, canManagePeople }: { canManageRoles: boolean; canManagePeople: boolean }) {
   const [range, setRange] = useState<DayRange>(() => lastDays(30))
   const [showAll, setShowAll] = useState(false)
   const people = useApi(() => getPeople(range, showAll ? 'all' : 'user'), `people-${range.from}-${range.to}-${showAll}`)
@@ -20,28 +20,29 @@ export function People() {
       <PageHeader
         title="People"
         lede="Hours clocked use the selected dates. Task counts, on-time rate and ratings cover all time."
-        actions={
+        actions={canManagePeople ? (
           <Button variant="primary" onClick={() => setAdding(true)}>
             Add person
           </Button>
-        }
+        ) : undefined}
       />
       {notice && <SuccessNotice message={notice} onDismiss={() => setNotice(null)} />}
       {adding && (
         <UserDialog
+          canManageRoles={canManageRoles}
           onClose={() => setAdding(false)}
           onSaved={(user, message) => {
             setAdding(false)
             setNotice(message)
             // New admins are hidden by the default filter, so show them.
-            if (user.role === 'admin') setShowAll(true)
+            if (user.role_key === 'admin') setShowAll(true)
             people.reload()
           }}
         />
       )}
       <Toolbar>
         <RangePicker value={range} onChange={setRange} />
-        <Check label="Include admins" checked={showAll} onChange={setShowAll} />
+        <Check label="Include administrators" checked={showAll} onChange={setShowAll} />
       </Toolbar>
 
       <DataState state={people} isEmpty={(d) => d.users.length === 0} empty="No people yet. Add your first team member to start tracking their work.">
@@ -67,8 +68,8 @@ export function People() {
                     <th scope="row">
                       <a href={href('people', u.id)}>{u.name}</a>
                       <Sub>
-                        {u.role === 'admin' ? 'Admin, ' : ''}
-                        {u.department?.name ?? 'No department'}
+                        {u.role_name}
+                        {u.department?.name ? `, ${u.department.name}` : ''}
                       </Sub>
                     </th>
                     <td>

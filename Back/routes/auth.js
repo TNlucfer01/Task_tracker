@@ -5,9 +5,25 @@ const jwt = require("jsonwebtoken");
 const supabase = require("../config/db");
 const requireAuth = require("../middleware/requireAuth");
 const { jwtSecret, jwtOptions } = require("../config/auth");
+const { roleKey } = require("../utils/authorization");
 
 const router = express.Router();
-const USER_COLUMNS = "id, name, email, role, department_id, is_active, password_hash";
+const USER_COLUMNS = "id, name, email, password_hash, role_id, department_id, title, is_active, role:roles!users_role_id_fkey(id, name, scope, permissions:role_permissions!role_permissions_role_id_fkey(permission))";
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role_id: user.role_id,
+    role: roleKey(user.role.name),
+    role_name: user.role.name,
+    scope: user.role.scope,
+    permissions: (user.role.permissions ?? []).map((entry) => entry.permission),
+    department_id: user.department_id,
+    title: user.title,
+  };
+}
 
 // Escape LIKE wildcards so the case-insensitive email match is an exact match.
 function escapeLike(value) {
@@ -77,7 +93,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
     return res.status(500).json({ error: "Unable to sign in right now." });
   }
 
-  if (!user || typeof user.password_hash !== "string") {
+  if (!user || typeof user.password_hash !== "string" || !user.role) {
     return res.status(401).json({ error: "Invalid username/email or password." });
   }
 
@@ -98,7 +114,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
   }
 
   const token = jwt.sign(
-    { name: user.name, email: user.email, role: user.role },
+    { name: user.name, email: user.email, role_id: user.role_id },
     jwtSecret,
     {
       algorithm: "HS256",
@@ -113,15 +129,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
     maxAge: sessionDurationMs,
   });
 
-  return res.json({
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      department_id: user.department_id,
-    },
-  });
+  return res.json({ user: publicUser(user) });
 });
 
 router.get("/me", requireAuth, (req, res) => {

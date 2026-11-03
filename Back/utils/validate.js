@@ -1,6 +1,5 @@
 const { HttpError } = require("./http");
 
-const ROLES = ["admin", "user"];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function requireString(value, label) {
@@ -37,13 +36,6 @@ function validPassword(value) {
   return value;
 }
 
-function validRole(value) {
-  if (!ROLES.includes(value)) {
-    throw new HttpError(400, "Role must be admin or user.");
-  }
-  return value;
-}
-
 // null clears the department; otherwise a positive integer id.
 function validDepartmentId(value) {
   if (value === null || value === "") {
@@ -63,4 +55,4 @@ function validBoolean(value, label) {
   return value;
 }
 
-module.exports = { validName, validEmail, validPassword, validRole, validDepartmentId, validBoolean };
+module.exports = { validName, validEmail, validPassword, validDepartmentId, validBoolean };

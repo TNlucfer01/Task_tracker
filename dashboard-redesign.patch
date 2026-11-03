@@ -1,0 +1,2471 @@
+From 578c020f01728b515ad718cdab8351a02a150715 Mon Sep 17 00:00:00 2001
+From: TNlucfer01 <ihdaa2006@gmail.com>
+Date: Tue, 3 Nov 2026 07:31:31 +0000
+Subject: [PATCH] Redesign the admin dashboard on a design system
+
+Design system
+- Colour tokens for light and dark themes (navy frame, brand blue,
+  semantic and task status colours, chart and timesheet scales)
+- IBM Plex Sans with one type scale; tables and KPI strips as panels
+- Dark mode follows the operating system
+
+Overview
+- New GET /api/admin/dashboard/summary computes the whole overview
+- KPI strip: active people, not started, pending, completed, overdue
+- Needs attention: waiting for review, overdue, due this week
+- On the clock with live timers; refreshes every 60 seconds
+- Projects with progress split by department
+- Departments: people, working now, open, overdue, done, hours,
+  time on tasks, rating
+- Team hours for 14 days by department, and recent activity
+- Ranking moved to the People page
+
+Also
+- Department picker in the user form says why it couldn't load
+- Task status "To do" is now "Not started"; #/tasks/status/<status> links
+---
+ Back/routes/admin/dashboard/index.js   |   1 +
+ Back/routes/admin/dashboard/summary.js | 259 ++++++++
+ Front/index.html                       |   2 +-
+ Front/src/App.tsx                      |   4 +-
+ Front/src/api/admin/dashboard.ts       |  75 +++
+ Front/src/components/AppShell.tsx      |  78 ++-
+ Front/src/components/Ranking.tsx       |  53 ++
+ Front/src/components/UserDialog.tsx    |  69 ++-
+ Front/src/components/ui.tsx            |  44 +-
+ Front/src/index.css                    | 193 ++++--
+ Front/src/lib/format.ts                |  23 +-
+ Front/src/lib/status.ts                |  33 +-
+ Front/src/lib/useApi.ts                |  25 +-
+ Front/src/pages/Login.tsx              |  20 +-
+ Front/src/pages/MyTasks.tsx            |   4 +-
+ Front/src/pages/admin/Attendance.tsx   |  14 +-
+ Front/src/pages/admin/Overview.tsx     | 810 ++++++++++++++++++++-----
+ Front/src/pages/admin/People.tsx       |  10 +-
+ Front/src/pages/admin/Person.tsx       |  10 +-
+ Front/src/pages/admin/Projects.tsx     |   2 +-
+ Front/src/pages/admin/Tasks.tsx        |   5 +-
+ README.md                              |  17 +
+ 22 files changed, 1447 insertions(+), 304 deletions(-)
+ create mode 100644 Back/routes/admin/dashboard/summary.js
+ create mode 100644 Front/src/components/Ranking.tsx
+
+diff --git a/Back/routes/admin/dashboard/index.js b/Back/routes/admin/dashboard/index.js
+index 5e5b31c..81ddb54 100644
+--- a/Back/routes/admin/dashboard/index.js
++++ b/Back/routes/admin/dashboard/index.js
+@@ -2,6 +2,7 @@ const express = require("express");
+ const router = express.Router();
+ 
+ router.use(require("./overview"));
++router.use(require("./summary"));
+ router.use(require("./users"));
+ router.use(require("./projects"));
+ router.use(require("./tasks"));
+diff --git a/Back/routes/admin/dashboard/summary.js b/Back/routes/admin/dashboard/summary.js
+new file mode 100644
+index 0000000..4bd75ed
+--- /dev/null
++++ b/Back/routes/admin/dashboard/summary.js
+@@ -0,0 +1,259 @@
++// GET /api/admin/dashboard/summary — everything the overview page shows, in one request.
++//
++// "This week" means the last 7 days including today, in India time.
++// Pending = in progress + in review + rework. Not started = todo. Completed = done.
++
++const express = require("express");
++const supabase = require("../../../config/db");
++const { run, todayInIndia, round } = require("../../../utils/http");
++const { isOverdue } = require("./shared");
++
++const router = express.Router();
++
++const DAY_MS = 24 * 60 * 60 * 1000;
++const PENDING = new Set(["in_progress", "in_review", "rework"]);
++const PROJECT_ORDER = { active: 0, planned: 1, on_hold: 2, completed: 3 };
++const ATTENTION_LIMIT = 6;
++const ACTIVITY_LIMIT = 8;
++const TREND_DAYS = 14;
++
++function minutesBetween(start, end) {
++  return (new Date(end ?? Date.now()) - new Date(start)) / 60000;
++}
++
++router.get("/summary", async (req, res) => {
++  const now = Date.now();
++  const today = todayInIndia();
++  const weekStart = todayInIndia(-6);
++  const trendStart = todayInIndia(-(TREND_DAYS - 1));
++  const weekAgoIso = new Date(now - 7 * DAY_MS).toISOString();
++
++  const [departments, users, projects, tasks, openSessions, dailyHours, timeLogs, reviews, activity] = await Promise.all([
++    run(supabase.from("departments").select("id, name").order("name")),
++    run(supabase.from("users").select("id, name, role, is_active, department_id")),
++    run(supabase.from("projects").select("id, name, status, deadline, completed_at")),
++    run(supabase.from("tasks").select("id, name, status, deadline, project_id, assigned_to, created_at, completed_at")),
++    run(supabase.from("work_sessions").select("user_id, clock_in").is("clock_out", null).order("clock_in")),
++    run(supabase.from("v_daily_hours").select("user_id, day, hours_clocked").gte("day", trendStart).lte("day", today)),
++    run(supabase.from("task_time_logs").select("user_id, started_at, ended_at").gte("started_at", weekAgoIso)),
++    run(supabase.from("task_reviews").select("rating, task:tasks(assigned_to)")),
++    run(
++      supabase
++        .from("task_status_history")
++        .select("id, old_status, new_status, changed_at, task:tasks(id, name), actor:users(id, name)")
++        .order("changed_at", { ascending: false })
++        .limit(ACTIVITY_LIMIT),
++    ),
++  ]);
++
++  const userById = new Map(users.data.map((u) => [u.id, u]));
++  const projectById = new Map(projects.data.map((p) => [p.id, p]));
++  const deptOf = (userId) => userById.get(userId)?.department_id ?? null;
++  const ref = (row) => (row ? { id: row.id, name: row.name } : null);
++
++  // ---- People and task counts --------------------------------------------------------
++  const team = users.data.filter((u) => u.role === "user");
++  const activeTeam = team.filter((u) => u.is_active);
++  const hoursToday = dailyHours.data.filter((r) => r.day === today).reduce((s, r) => s + Number(r.hours_clocked), 0);
++
++  const counts = { not_started: 0, pending: 0, in_progress: 0, in_review: 0, rework: 0, completed: 0 };
++  let overdue = 0;
++  let completedThisWeek = 0;
++  let dueThisWeek = 0;
++  for (const t of tasks.data) {
++    if (t.status === "todo") counts.not_started += 1;
++    else if (t.status === "done") counts.completed += 1;
++    else {
++      counts.pending += 1;
++      counts[t.status] += 1;
++    }
++    if (isOverdue(t, now)) overdue += 1;
++    if (t.status === "done" && t.completed_at && new Date(t.completed_at) >= now - 7 * DAY_MS) completedThisWeek += 1;
++    if (t.status !== "done" && t.deadline && new Date(t.deadline) >= now && new Date(t.deadline) < now + 7 * DAY_MS) {
++      dueThisWeek += 1;
++    }
++  }
++
++  // ---- Departments ----------------------------------------------------------------------
++  // Fixed order (by name) gives each department a stable chart colour; "No department" goes last.
++  const deptRows = departments.data.map((d, i) => ({ id: d.id, name: d.name, slot: Math.min(i + 1, 5) }));
++  const hasUnassigned = team.some((u) => u.department_id === null);
++  if (hasUnassigned) deptRows.push({ id: null, name: "No department", slot: 0 });
++
++  const blank = () => ({
++    members: 0,
++    active_now: 0,
++    open_tasks: 0,
++    overdue_tasks: 0,
++    completed_tasks: 0,
++    hours_week: 0,
++    timer_hours_week: 0,
++    ratings: [],
++  });
++  const deptStats = new Map(deptRows.map((d) => [d.id, blank()]));
++  const statsFor = (deptId) => deptStats.get(deptId) ?? deptStats.get(null);
++
++  for (const u of activeTeam) {
++    const stats = statsFor(u.department_id);
++    if (stats) stats.members += 1;
++  }
++  for (const s of openSessions.data) {
++    const stats = statsFor(deptOf(s.user_id));
++    if (stats) stats.active_now += 1;
++  }
++  for (const t of tasks.data) {
++    if (t.assigned_to === null) continue;
++    const stats = statsFor(deptOf(t.assigned_to));
++    if (!stats) continue;
++    if (t.status === "done") stats.completed_tasks += 1;
++    else stats.open_tasks += 1;
++    if (isOverdue(t, now)) stats.overdue_tasks += 1;
++  }
++  for (const r of dailyHours.data) {
++    if (r.day < weekStart) continue;
++    const stats = statsFor(deptOf(r.user_id));
++    if (stats) stats.hours_week += Number(r.hours_clocked);
++  }
++  for (const l of timeLogs.data) {
++    const stats = statsFor(deptOf(l.user_id));
++    if (stats) stats.timer_hours_week += minutesBetween(l.started_at, l.ended_at) / 60;
++  }
++  for (const r of reviews.data) {
++    const stats = r.task?.assigned_to ? statsFor(deptOf(r.task.assigned_to)) : null;
++    if (stats) stats.ratings.push(r.rating);
++  }
++
++  const departmentsOut = deptRows.map((d) => {
++    const s = deptStats.get(d.id);
++    return {
++      id: d.id,
++      name: d.name,
++      slot: d.slot,
++      members: s.members,
++      active_now: s.active_now,
++      open_tasks: s.open_tasks,
++      overdue_tasks: s.overdue_tasks,
++      completed_tasks: s.completed_tasks,
++      hours_week: round(s.hours_week, 1),
++      timer_hours_week: round(s.timer_hours_week, 1),
++      // Share of clocked time spent on task timers. Over 100% would mean timers outside sessions.
++      utilization_pct: s.hours_week > 0 ? round(Math.min(100, (100 * s.timer_hours_week) / s.hours_week), 0) : null,
++      avg_rating: s.ratings.length ? round(s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length, 1) : null,
++    };
++  });
++
++  // ---- Projects, with progress split by department ----------------------------------------
++  const projectStats = new Map(projects.data.map((p) => [p.id, { total: 0, done: 0, overdue: 0, byDept: new Map() }]));
++  for (const t of tasks.data) {
++    const ps = projectStats.get(t.project_id);
++    if (!ps) continue;
++    ps.total += 1;
++    if (t.status === "done") ps.done += 1;
++    if (isOverdue(t, now)) ps.overdue += 1;
++    const deptId = t.assigned_to === null ? "unassigned" : deptOf(t.assigned_to);
++    const bucket = ps.byDept.get(deptId) ?? { total: 0, done: 0 };
++    bucket.total += 1;
++    if (t.status === "done") bucket.done += 1;
++    ps.byDept.set(deptId, bucket);
++  }
++
++  const projectsOut = projects.data
++    .map((p) => {
++      const ps = projectStats.get(p.id);
++      return {
++        id: p.id,
++        name: p.name,
++        status: p.status,
++        deadline: p.deadline,
++        overdue: p.status !== "completed" && p.deadline !== null && new Date(p.deadline) < now,
++        task_count: ps.total,
++        tasks_done: ps.done,
++        tasks_overdue: ps.overdue,
++        progress_pct: ps.total ? round((100 * ps.done) / ps.total, 0) : 0,
++        by_department: [...ps.byDept.entries()].map(([departmentId, b]) => ({
++          department_id: departmentId === "unassigned" ? null : departmentId,
++          unassigned: departmentId === "unassigned",
++          total: b.total,
++          done: b.done,
++        })),
++      };
++    })
++    .sort(
++      (a, b) =>
++        PROJECT_ORDER[a.status] - PROJECT_ORDER[b.status] ||
++        (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999"),
++    );
++
++  // ---- Needs attention ---------------------------------------------------------------------
++  const taskCard = (t) => ({
++    id: t.id,
++    name: t.name,
++    status: t.status,
++    deadline: t.deadline,
++    overdue: isOverdue(t, now),
++    project: ref(projectById.get(t.project_id)),
++    assignee: ref(userById.get(t.assigned_to)),
++  });
++  const byDeadline = (a, b) => new Date(a.deadline) - new Date(b.deadline);
++
++  const waitingReview = tasks.data.filter((t) => t.status === "in_review");
++  const overdueTasks = tasks.data.filter((t) => isOverdue(t, now)).sort(byDeadline);
++  const dueSoon = tasks.data
++    .filter((t) => t.status !== "done" && t.deadline && new Date(t.deadline) >= now && new Date(t.deadline) < now + 7 * DAY_MS)
++    .sort(byDeadline);
++
++  // ---- Hours trend: clocked hours per day per department -----------------------------------
++  const trendDays = Array.from({ length: TREND_DAYS }, (_, i) => todayInIndia(i - (TREND_DAYS - 1)));
++  const dayIndex = new Map(trendDays.map((d, i) => [d, i]));
++  const trend = new Map(deptRows.map((d) => [d.id, Array(TREND_DAYS).fill(0)]));
++  for (const r of dailyHours.data) {
++    const i = dayIndex.get(r.day);
++    const series = trend.get(deptOf(r.user_id)) ?? trend.get(null);
++    if (i !== undefined && series) series[i] += Number(r.hours_clocked);
++  }
++
++  res.json({
++    date: today,
++    people: {
++      active: activeTeam.length,
++      inactive: team.length - activeTeam.length,
++      admins: users.data.filter((u) => u.role === "admin" && u.is_active).length,
++      clocked_in_now: openSessions.data.length,
++      hours_today: round(hoursToday, 1),
++    },
++    tasks: {
++      total: tasks.data.length,
++      ...counts,
++      overdue,
++      completed_this_week: completedThisWeek,
++      due_this_week: dueThisWeek,
++    },
++    projects: projectsOut,
++    departments: departmentsOut,
++    attention: {
++      waiting_review: { count: waitingReview.length, tasks: waitingReview.slice(0, ATTENTION_LIMIT).map(taskCard) },
++      overdue: { count: overdueTasks.length, tasks: overdueTasks.slice(0, ATTENTION_LIMIT).map(taskCard) },
++      due_soon: { count: dueSoon.length, tasks: dueSoon.slice(0, ATTENTION_LIMIT).map(taskCard) },
++    },
++    on_the_clock: openSessions.data.map((s) => ({
++      user_id: s.user_id,
++      name: userById.get(s.user_id)?.name ?? null,
++      department_id: deptOf(s.user_id),
++      clock_in: s.clock_in,
++    })),
++    hours_trend: {
++      days: trendDays,
++      series: deptRows.map((d) => ({ department_id: d.id, values: trend.get(d.id).map((v) => round(v, 1)) })),
++    },
++    activity: activity.data.map((a) => ({
++      id: a.id,
++      old_status: a.old_status,
++      new_status: a.new_status,
++      changed_at: a.changed_at,
++      task: ref(a.task),
++      actor: ref(a.actor),
++    })),
++  });
++});
++
++module.exports = router;
+diff --git a/Front/index.html b/Front/index.html
+index f760e5e..f264f59 100644
+--- a/Front/index.html
++++ b/Front/index.html
+@@ -8,7 +8,7 @@
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+     <link
+       rel="stylesheet"
+-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
++      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+     />
+     <title>Task Tracker</title>
+   </head>
+diff --git a/Front/src/App.tsx b/Front/src/App.tsx
+index f1c24c8..979c7e1 100644
+--- a/Front/src/App.tsx
++++ b/Front/src/App.tsx
+@@ -57,7 +57,7 @@ export default function App() {
+     return (
+       <>
+         {sessionError && (
+-          <p className="bg-over-tint px-4 py-2.5 text-center text-sm text-over" role="alert">
++          <p className="bg-danger-tint px-4 py-2.5 text-center text-sm text-danger" role="alert">
+             {sessionError}
+           </p>
+         )}
+@@ -96,7 +96,7 @@ function AdminApp({ user, onSignOut, signingOut }: { user: User; onSignOut: () =
+     default:
+       page = (
+         <div className="py-10">
+-          <h1 className="text-[34px] font-bold tracking-tight">Page not found</h1>
++          <h1 className="text-[26px] leading-8 font-semibold tracking-tight">Page not found</h1>
+           <p className="mt-2 text-ink-soft">
+             This page doesn't exist. <a href="#/">Go to the overview</a>
+           </p>
+diff --git a/Front/src/api/admin/dashboard.ts b/Front/src/api/admin/dashboard.ts
+index d35a074..ab36f16 100644
+--- a/Front/src/api/admin/dashboard.ts
++++ b/Front/src/api/admin/dashboard.ts
+@@ -122,3 +122,78 @@ export function getRanking(by: RankMetric, range: DayRange) {
+ export function getAttendance(range: DayRange) {
+   return request<Attendance>(`${dashboard}/attendance${query(range)}`)
+ }
++
++// ---- Overview summary (GET /api/admin/dashboard/summary) ---------------------
++
++export type AttentionTask = {
++  id: number
++  name: string
++  status: TaskStatus
++  deadline: string | null
++  overdue: boolean
++  project: Ref | null
++  assignee: Ref | null
++}
++
++export type DepartmentSummary = {
++  id: number | null
++  name: string
++  // Fixed chart colour slot: 1–4 are series colours, 0 or 5 means "other".
++  slot: number
++  members: number
++  active_now: number
++  open_tasks: number
++  overdue_tasks: number
++  completed_tasks: number
++  hours_week: number
++  timer_hours_week: number
++  utilization_pct: number | null
++  avg_rating: number | null
++}
++
++export type ProjectProgress = {
++  id: number
++  name: string
++  status: ProjectStatus
++  deadline: string | null
++  overdue: boolean
++  task_count: number
++  tasks_done: number
++  tasks_overdue: number
++  progress_pct: number
++  by_department: { department_id: number | null; unassigned: boolean; total: number; done: number }[]
++}
++
++export type DashboardSummary = {
++  date: string
++  people: { active: number; inactive: number; admins: number; clocked_in_now: number; hours_today: number }
++  tasks: {
++    total: number
++    not_started: number
++    pending: number
++    in_progress: number
++    in_review: number
++    rework: number
++    completed: number
++    overdue: number
++    completed_this_week: number
++    due_this_week: number
++  }
++  projects: ProjectProgress[]
++  departments: DepartmentSummary[]
++  attention: Record<'waiting_review' | 'overdue' | 'due_soon', { count: number; tasks: AttentionTask[] }>
++  on_the_clock: { user_id: number; name: string | null; department_id: number | null; clock_in: string }[]
++  hours_trend: { days: string[]; series: { department_id: number | null; values: number[] }[] }
++  activity: {
++    id: number
++    old_status: TaskStatus | null
++    new_status: TaskStatus
++    changed_at: string
++    task: Ref | null
++    actor: Ref | null
++  }[]
++}
++
++export function getSummary() {
++  return request<DashboardSummary>(`${dashboard}/summary`)
++}
+diff --git a/Front/src/components/AppShell.tsx b/Front/src/components/AppShell.tsx
+index 6abf5c9..87edd57 100644
+--- a/Front/src/components/AppShell.tsx
++++ b/Front/src/components/AppShell.tsx
+@@ -4,13 +4,30 @@ import type { User } from '../api/types'
+ import { Button } from './ui'
+ 
+ const nav = [
+-  { key: '', label: 'Overview' },
+-  { key: 'people', label: 'People' },
+-  { key: 'projects', label: 'Projects' },
+-  { key: 'tasks', label: 'Tasks' },
+-  { key: 'attendance', label: 'Attendance' },
++  { key: '', label: 'Overview', icon: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z' },
++  { key: 'people', label: 'People', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' },
++  { key: 'projects', label: 'Projects', icon: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
++  { key: 'tasks', label: 'Tasks', icon: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9' },
++  { key: 'attendance', label: 'Attendance', icon: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0' },
+ ]
+ 
++function NavIcon({ d }: { d: string }) {
++  return (
++    <svg
++      viewBox="0 0 24 24"
++      className="size-[18px] shrink-0"
++      fill="none"
++      stroke="currentColor"
++      strokeWidth="1.8"
++      strokeLinecap="round"
++      strokeLinejoin="round"
++      aria-hidden="true"
++    >
++      <path d={d} />
++    </svg>
++  )
++}
++
+ export function AppShell({
+   user,
+   section,
+@@ -25,11 +42,11 @@ export function AppShell({
+   children: ReactNode
+ }) {
+   return (
+-    <div className="min-h-screen lg:grid lg:grid-cols-[220px_minmax(0,1fr)]">
+-      <aside className="sticky top-0 z-10 flex flex-col border-b border-line bg-panel lg:h-screen lg:border-r lg:border-b-0">
+-        <div className="flex items-center justify-between gap-4 px-4 pt-4 lg:px-6 lg:pt-7">
+-          <Brand />
+-          <Button className="lg:hidden" onClick={onSignOut} disabled={signingOut}>
++    <div className="min-h-screen lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
++      <aside className="sticky top-0 z-20 flex flex-col bg-chrome text-chrome-ink lg:h-screen">
++        <div className="flex items-center justify-between gap-4 px-4 pt-4 lg:px-5 lg:pt-6">
++          <Brand onChrome />
++          <Button variant="onDark" className="lg:hidden" onClick={onSignOut} disabled={signingOut}>
+             {signingOut ? 'Signing out…' : 'Sign out'}
+           </Button>
+         </div>
+@@ -40,43 +57,56 @@ export function AppShell({
+                 <a
+                   href={href(item.key)}
+                   aria-current={section === item.key ? 'page' : undefined}
+-                  className="block rounded-md px-3 py-2 whitespace-nowrap text-ink-soft no-underline hover:bg-paper hover:text-ink aria-[current=page]:bg-stamp-tint aria-[current=page]:font-medium aria-[current=page]:text-stamp"
++                  className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap text-chrome-muted no-underline hover:bg-white/8 hover:text-chrome-ink aria-[current=page]:bg-white/12 aria-[current=page]:text-chrome-ink"
+                 >
++                  <NavIcon d={item.icon} />
+                   {item.label}
+                 </a>
+               </li>
+             ))}
+           </ul>
+         </nav>
+-        <div className="mt-auto hidden border-t border-line px-6 py-5 lg:block">
+-          <p className="mb-3">
+-            <strong className="block font-medium">{user.name}</strong>
+-            <span className="text-sm text-ink-soft">Admin</span>
++        <div className="mt-auto hidden border-t border-white/10 px-5 py-5 lg:block">
++          <p className="mb-3 flex items-center gap-3">
++            <span
++              className="grid size-9 place-items-center rounded-full bg-white/12 text-sm font-semibold text-chrome-ink"
++              aria-hidden="true"
++            >
++              {user.name.slice(0, 1).toUpperCase()}
++            </span>
++            <span>
++              <strong className="block text-sm font-medium">{user.name}</strong>
++              <span className="text-xs text-chrome-muted">Admin</span>
++            </span>
+           </p>
+-          <Button onClick={onSignOut} disabled={signingOut}>
++          <Button variant="onDark" onClick={onSignOut} disabled={signingOut}>
+             {signingOut ? 'Signing out…' : 'Sign out'}
+           </Button>
+         </div>
+       </aside>
+-      <main className="mx-auto w-full max-w-[1180px] px-4 pt-8 pb-16 sm:px-8 lg:px-12 lg:pt-12">{children}</main>
++      <main className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 sm:px-8 lg:px-10 lg:pt-10">{children}</main>
+     </div>
+   )
+ }
+ 
+-export function Brand() {
++export function Brand({ onChrome = false }: { onChrome?: boolean }) {
+   return (
+-    <a href={href()} className="flex items-center gap-2.5 font-display text-lg font-semibold text-ink no-underline">
+-      <ClockMark />
++    <a
++      href={href()}
++      className={`flex items-center gap-2.5 text-base font-semibold no-underline ${onChrome ? 'text-chrome-ink hover:text-chrome-ink' : 'text-ink hover:text-ink'}`}
++    >
++      <ClockMark onChrome={onChrome} />
+       Task Tracker
+     </a>
+   )
+ }
+ 
+-export function ClockMark() {
++export function ClockMark({ onChrome = false }: { onChrome?: boolean }) {
+   return (
+-    <svg className="size-7 text-stamp" viewBox="0 0 32 32" aria-hidden="true">
+-      <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="2.5" />
+-      <path d="M16 8.5V16l5 3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
++    <svg className={`size-7 ${onChrome ? 'text-chrome-ink' : 'text-primary'}`} viewBox="0 0 32 32" aria-hidden="true">
++      <rect x="2" y="2" width="28" height="28" rx="7" fill="currentColor" opacity={onChrome ? 0.14 : 0.12} />
++      <circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" strokeWidth="2.2" />
++      <path d="M16 11v5l3.5 2" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+     </svg>
+   )
+ }
+diff --git a/Front/src/components/Ranking.tsx b/Front/src/components/Ranking.tsx
+new file mode 100644
+index 0000000..b18328e
+--- /dev/null
++++ b/Front/src/components/Ranking.tsx
+@@ -0,0 +1,53 @@
++import { useState } from 'react'
++import { getRanking, type RankMetric, type RankedUser } from '../api/admin/dashboard'
++import { formatHours, formatPct, formatRating, lastDays, plural } from '../lib/format'
++import { href } from '../lib/router'
++import { useApi } from '../lib/useApi'
++import { DataState, Section, SectionHead, Select } from './ui'
++
++const metrics: { key: RankMetric; label: string; show: (u: RankedUser) => string }[] = [
++  { key: 'tasks_done', label: 'Tasks done', show: (u) => plural(u.tasks_done, 'task') },
++  { key: 'on_time_pct', label: 'On time', show: (u) => formatPct(u.on_time_pct) },
++  { key: 'avg_rating', label: 'Average rating', show: (u) => formatRating(u.avg_rating) },
++  { key: 'hours_clocked', label: 'Hours clocked', show: (u) => formatHours(u.hours_clocked) },
++  { key: 'rework_bounces', label: 'Fewest reworks', show: (u) => plural(u.rework_bounces, 'rework') },
++]
++
++// Active team members ordered by one metric over the last 30 days.
++export function Ranking() {
++  const [by, setBy] = useState<RankMetric>('tasks_done')
++  const range = lastDays(30)
++  const ranking = useApi(() => getRanking(by, range), `rank-${by}-${range.from}`)
++  const metric = metrics.find((m) => m.key === by)!
++
++  return (
++    <Section labelledBy="rank-title">
++      <SectionHead id="rank-title" title="Ranking, last 30 days">
++        <Select label="Rank by" value={by} onChange={(v) => setBy(v as RankMetric)}>
++          {metrics.map((m) => (
++            <option key={m.key} value={m.key}>
++              {m.label}
++            </option>
++          ))}
++        </Select>
++      </SectionHead>
++      <DataState state={ranking} isEmpty={(d) => d.users.length === 0} empty="No active people to rank yet.">
++        {(data) => (
++          <ol className="max-w-2xl overflow-hidden rounded-lg border border-line bg-surface">
++            {data.users.map((u) => (
++              <li key={u.id} className="flex items-baseline gap-4 border-b border-line px-4 py-3 last:border-b-0">
++                <span className="w-6 text-base font-semibold text-ink-faint">{u.rank ?? '–'}</span>
++                <a href={href('people', u.id)} className="font-medium">
++                  {u.name}
++                </a>
++                <span className={`ml-auto ${u.rank === null ? 'text-ink-faint' : 'font-medium'}`}>
++                  {u.rank === null ? 'No data yet' : metric.show(u)}
++                </span>
++              </li>
++            ))}
++          </ol>
++        )}
++      </DataState>
++    </Section>
++  )
++}
+diff --git a/Front/src/components/UserDialog.tsx b/Front/src/components/UserDialog.tsx
+index f1d0e33..cf3f073 100644
+--- a/Front/src/components/UserDialog.tsx
++++ b/Front/src/components/UserDialog.tsx
+@@ -24,7 +24,7 @@ type Props = {
+ }
+ 
+ const inputClass =
+-  'min-h-10 w-full rounded-md border border-line-strong bg-panel px-3 text-ink focus:border-stamp focus:outline-none focus:ring-3 focus:ring-stamp/15 disabled:bg-paper disabled:text-ink-soft'
++  'min-h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-ink focus:border-primary focus:outline-none focus:ring-3 focus:ring-primary/15 disabled:bg-canvas disabled:text-ink-soft'
+ 
+ // Add or edit a person. Rendered only while open; it opens itself as a modal on mount.
+ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }: Props) {
+@@ -95,7 +95,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
+         if (!saving) onClose()
+       }}
+       aria-labelledby="user-dialog-title"
+-      className="m-auto max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg bg-panel p-0 text-ink shadow-xl backdrop:bg-ink/40"
++      className="m-auto max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg bg-surface p-0 text-ink shadow-xl backdrop:bg-chrome/60"
+     >
+       <form onSubmit={handleSubmit} className="grid gap-5 p-6 sm:p-8">
+         <header>
+@@ -152,7 +152,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
+             ).map((option) => (
+               <label
+                 key={option.value}
+-                className={`flex gap-2.5 rounded-md border border-line-strong px-3 py-2.5 has-checked:border-stamp has-checked:bg-stamp-tint ${isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
++                className={`flex gap-2.5 rounded-md border border-line-strong px-3 py-2.5 has-checked:border-primary has-checked:bg-primary-tint ${isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+               >
+                 <input
+                   type="radio"
+@@ -161,7 +161,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
+                   checked={role === option.value}
+                   onChange={() => setRole(option.value)}
+                   disabled={isSelf}
+-                  className="mt-1 accent-stamp"
++                  className="mt-1 accent-primary"
+                 />
+                 <span>
+                   <span className="block text-sm font-medium">{option.label}</span>
+@@ -173,22 +173,45 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
+           {isSelf && <p className="mt-1.5 text-xs text-ink-soft">You can't change your own role.</p>}
+         </fieldset>
+ 
+-        <Field label="Department">
++        <Field
++          label="Department"
++          hint={
++            departments.loading && !departments.data
++              ? 'Loading departments…'
++              : departments.data?.departments.length === 0
++                ? 'No departments exist yet, so this person will have none for now.'
++                : undefined
++          }
++        >
+           {(id) => (
+-            <select
+-              id={id}
+-              className={inputClass}
+-              value={departmentId ?? ''}
+-              onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : null)}
+-              disabled={!departments.data}
+-            >
+-              <option value="">No department</option>
+-              {departments.data?.departments.map((d) => (
+-                <option key={d.id} value={d.id}>
+-                  {d.name}
+-                </option>
+-              ))}
+-            </select>
++            <>
++              <select
++                id={id}
++                className={inputClass}
++                value={departmentId ?? ''}
++                onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : null)}
++                disabled={!departments.data}
++              >
++                <option value="">No department</option>
++                {departments.data?.departments.map((d) => (
++                  <option key={d.id} value={d.id}>
++                    {d.name}
++                  </option>
++                ))}
++              </select>
++              {departments.error && (
++                <p className="flex flex-wrap items-center gap-x-3 text-xs text-danger" role="alert">
++                  Couldn't load departments: {departments.error}
++                  <button
++                    type="button"
++                    onClick={departments.reload}
++                    className="cursor-pointer font-medium underline underline-offset-2"
++                  >
++                    Try again
++                  </button>
++                </p>
++              )}
++            </>
+           )}
+         </Field>
+ 
+@@ -215,7 +238,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
+           <label className={`flex items-start gap-2.5 ${isSelf ? 'opacity-60' : 'cursor-pointer'}`}>
+             <input
+               type="checkbox"
+-              className="mt-1 size-4 accent-stamp"
++              className="mt-1 size-4 accent-primary"
+               checked={active}
+               onChange={(e) => setActive(e.target.checked)}
+               disabled={isSelf}
+@@ -232,7 +255,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
+         )}
+ 
+         {error && (
+-          <p className="rounded-md border border-over/30 bg-over-tint px-3 py-2.5 text-sm text-over" role="alert">
++          <p className="rounded-md border border-danger/30 bg-danger-tint px-3 py-2.5 text-sm text-danger" role="alert">
+             {error}
+           </p>
+         )}
+@@ -313,7 +336,7 @@ function DeleteZone({
+   }
+ 
+   return (
+-    <section aria-labelledby="delete-title" className="rounded-md border border-over/25 p-4">
++    <section aria-labelledby="delete-title" className="rounded-md border border-danger/25 p-4">
+       <h3 id="delete-title" className="text-base font-semibold">
+         Delete {user.name}
+       </h3>
+@@ -353,7 +376,7 @@ function DeleteZone({
+       )}
+ 
+       {error && (
+-        <p className="mt-2 text-sm text-over" role="alert">
++        <p className="mt-2 text-sm text-danger" role="alert">
+           {error}
+         </p>
+       )}
+diff --git a/Front/src/components/ui.tsx b/Front/src/components/ui.tsx
+index 49afae8..5bbcd30 100644
+--- a/Front/src/components/ui.tsx
++++ b/Front/src/components/ui.tsx
+@@ -6,11 +6,11 @@ import type { TaskStatus } from '../api/types'
+ 
+ 
+ const buttonStyles = {
+-  primary: 'bg-stamp text-white hover:bg-stamp-deep min-h-11 px-5',
+-  quiet: 'border border-line-strong bg-panel text-ink hover:bg-paper min-h-9 px-3.5',
+-  onDark: 'border border-white/30 text-white hover:bg-white/10 min-h-9 px-3.5',
+-  danger: 'bg-over text-white hover:bg-over/90 min-h-9 px-3.5',
+-  dangerQuiet: 'border border-over/40 bg-panel text-over hover:bg-over-tint min-h-9 px-3.5',
++  primary: 'bg-primary text-on-primary hover:bg-primary-strong min-h-9 px-4',
++  quiet: 'border border-line-strong bg-surface text-ink hover:bg-canvas min-h-9 px-3.5',
++  onDark: 'border border-chrome-muted/50 text-chrome-ink hover:bg-white/10 min-h-9 px-3.5',
++  danger: 'bg-danger text-on-primary hover:bg-danger/90 min-h-9 px-3.5',
++  dangerQuiet: 'border border-danger/40 bg-surface text-danger hover:bg-danger-tint min-h-9 px-3.5',
+ }
+ 
+ export function Button({
+@@ -31,7 +31,7 @@ export function PageHeader({ title, lede, actions }: { title: string; lede?: Rea
+   return (
+     <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+       <div>
+-        <h1 className="text-[34px] leading-tight font-bold tracking-tight">{title}</h1>
++        <h1 className="text-[26px] leading-8 font-semibold tracking-tight">{title}</h1>
+         {lede && <p className="mt-1.5 max-w-[65ch] text-ink-soft">{lede}</p>}
+       </div>
+       {actions}
+@@ -42,7 +42,7 @@ export function PageHeader({ title, lede, actions }: { title: string; lede?: Rea
+ export function SectionHead({ id, title, children }: { id: string; title: string; children?: ReactNode }) {
+   return (
+     <div className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+-      <h2 id={id} className="text-xl font-semibold">
++      <h2 id={id} className="text-[17px] leading-6 font-semibold">
+         {title}
+       </h2>
+       {children}
+@@ -78,7 +78,7 @@ export function ProjectStatusPill({ status }: { status: ProjectStatus }) {
+ 
+ export function OverdueTag() {
+   return (
+-    <span className="ml-1 inline-block rounded-sm bg-over-tint px-1.5 py-px text-xs font-semibold whitespace-nowrap text-over">
++    <span className="ml-1 inline-block rounded-sm bg-danger-tint px-1.5 py-px text-xs font-semibold whitespace-nowrap text-danger">
+       Overdue
+     </span>
+   )
+@@ -87,7 +87,7 @@ export function OverdueTag() {
+ export function LiveDot({ light = false }: { light?: boolean }) {
+   return (
+     <i
+-      className={`inline-block size-2 shrink-0 animate-live rounded-full ${light ? 'bg-white' : 'bg-done'}`}
++      className={`inline-block size-2 shrink-0 animate-live rounded-full ${light ? 'bg-chrome-ink' : 'bg-success'}`}
+       aria-hidden="true"
+     />
+   )
+@@ -102,7 +102,7 @@ export function Sub({ children }: { children: ReactNode }) {
+ }
+ 
+ export function TableWrap({ children }: { children: ReactNode }) {
+-  return <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">{children}</div>
++  return <div className="overflow-x-auto rounded-lg border border-line bg-surface">{children}</div>
+ }
+ 
+ // Loading / error / empty handling, so each page only describes its happy path.
+@@ -120,7 +120,7 @@ export function DataState<T>({
+   if (state.error) {
+     return (
+       <div
+-        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-over/30 bg-over-tint px-4 py-3 text-over"
++        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-tint px-4 py-3 text-danger"
+         role="alert"
+       >
+         <p>{state.error}</p>
+@@ -153,14 +153,14 @@ export function Segmented<T extends string | number>({
+   onChange: (value: T) => void
+ }) {
+   return (
+-    <div className="inline-flex flex-wrap rounded-md border border-line-strong bg-panel p-0.5" role="group" aria-label={label}>
++    <div className="inline-flex flex-wrap rounded-md border border-line-strong bg-surface p-0.5" role="group" aria-label={label}>
+       {options.map((o) => (
+         <button
+           key={String(o.value)}
+           type="button"
+           aria-pressed={value === o.value}
+           onClick={() => onChange(o.value)}
+-          className="cursor-pointer rounded px-3 py-1.5 text-sm text-ink-soft hover:text-ink aria-pressed:bg-ink aria-pressed:text-white"
++          className="cursor-pointer rounded px-3 py-1.5 text-sm text-ink-soft hover:text-ink aria-pressed:bg-primary aria-pressed:text-on-primary"
+         >
+           {o.label}
+         </button>
+@@ -176,7 +176,7 @@ const presets = [
+ ]
+ 
+ const fieldClass =
+-  'min-h-9 rounded-md border border-line-strong bg-panel px-2.5 text-sm text-ink focus:border-stamp focus:outline-none'
++  'min-h-9 rounded-md border border-line-strong bg-surface px-2.5 text-sm text-ink focus:border-primary focus:outline-none'
+ 
+ export function RangePicker({ value, onChange }: { value: DayRange; onChange: (range: DayRange) => void }) {
+   const active = presets.find((p) => {
+@@ -237,7 +237,7 @@ export function Check({ label, checked, onChange }: { label: string; checked: bo
+     <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+       <input
+         type="checkbox"
+-        className="size-4 accent-stamp"
++        className="size-4 accent-primary"
+         checked={checked}
+         onChange={(e) => onChange(e.target.checked)}
+       />
+@@ -255,21 +255,21 @@ export function Meter({ value, label, over = false }: { value: number; label: st
+   return (
+     <div className="h-1.5 w-full overflow-hidden rounded-full bg-line" role="img" aria-label={label}>
+       <span
+-        className={`block h-full rounded-full ${over ? 'bg-over' : 'bg-stamp'}`}
++        className={`block h-full rounded-full ${over ? 'bg-danger' : 'bg-primary'}`}
+         style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+       />
+     </div>
+   )
+ }
+ 
+-// A row of headline numbers. `alert` marks one in stamp red.
++// A row of headline numbers in one bordered strip (design system: KpiStrip). `alert` marks one in danger.
+ export function Tally({ items }: { items: { label: string; value: ReactNode; alert?: boolean }[] }) {
+   return (
+-    <dl className="mb-10 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(130px,1fr))]">
++    <dl className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
+       {items.map((item) => (
+-        <div key={item.label} className={`border-l-2 pl-3 ${item.alert ? 'border-over' : 'border-line-strong'}`}>
+-          <dt className="text-sm text-ink-soft">{item.label}</dt>
+-          <dd className={`font-display text-[28px] leading-tight font-semibold ${item.alert ? 'text-over' : ''}`}>
++        <div key={item.label} className="bg-surface px-5 py-4">
++          <dt className="text-[13px] font-medium text-ink-soft">{item.label}</dt>
++          <dd className={`mt-0.5 text-[26px] leading-8 font-semibold tracking-tight ${item.alert ? 'text-danger' : ''}`}>
+             {item.value}
+           </dd>
+         </div>
+@@ -283,7 +283,7 @@ export function SuccessNotice({ message, onDismiss }: { message: string; onDismi
+   return (
+     <div
+       role="status"
+-      className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-done/30 bg-done/8 px-4 py-3 text-done"
++      className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-status-done/30 bg-status-done/8 px-4 py-3 text-status-done"
+     >
+       <p>{message}</p>
+       <button type="button" onClick={onDismiss} className="cursor-pointer text-sm font-medium underline underline-offset-3">
+diff --git a/Front/src/index.css b/Front/src/index.css
+index d2174e5..74bcda0 100644
+--- a/Front/src/index.css
++++ b/Front/src/index.css
+@@ -1,35 +1,55 @@
+ @import 'tailwindcss';
+ 
+-/* Design tokens. Palette: cool paper, ink, and the two stamp colours of a punch clock. */
++/*
++  Task Tracker design system. Colour values are generated from the design system's tokens.json,
++  so the app and the published reference stay identical. Light is the default; dark follows the
++  operating system unless data-theme="light" or "dark" is set on <html>.
++*/
+ @theme {
+-  --color-paper: #f5f6f3;
+-  --color-panel: #ffffff;
+-  --color-ink: #1e2833;
+-  --color-ink-soft: #5a6672;
+-  --color-ink-faint: #8a939c;
+-  --color-line: #dde1dc;
+-  --color-line-strong: #c4cac3;
+-  --color-stamp: #2a4a9a;
+-  --color-stamp-deep: #213c80;
+-  --color-stamp-tint: #e8edf8;
+-  --color-over: #b8342a;
+-  --color-over-tint: #fbecea;
+-
+-  /* Task statuses */
+-  --color-todo: #8a939c;
+-  --color-progress: #2a4a9a;
+-  --color-review: #7356ad;
+-  --color-done: #2f7d4f;
+-  --color-rework: #b06f12;
+-
+-  /* Timesheet shades, lightest to darkest */
+-  --color-shade-1: #dfe6f5;
+-  --color-shade-2: #b3c3e8;
+-  --color-shade-3: #6f8bd0;
+-  --color-shade-4: #2a4a9a;
+-
+-  --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+-  --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
++  --color-canvas: #f4f6f9;
++  --color-surface: #ffffff;
++  --color-subtle: #eef1f5;
++  --color-line: #dde2ea;
++  --color-line-strong: #838c9f;
++  --color-ink: #121a2b;
++  --color-ink-soft: #4b5567;
++  --color-ink-faint: #646d7d;
++  --color-primary: #1f4fd1;
++  --color-primary-strong: #173da6;
++  --color-primary-tint: #e8eefc;
++  --color-on-primary: #ffffff;
++  --color-chrome: #0f1d3a;
++  --color-chrome-ink: #e6ebf5;
++  --color-chrome-muted: #a3afc7;
++  --color-success: #1b7442;
++  --color-success-tint: #e4f3e9;
++  --color-warning: #9a5b0a;
++  --color-warning-tint: #fbefd9;
++  --color-danger: #bd3328;
++  --color-danger-tint: #fbe8e6;
++  --color-status-todo: #646d7d;
++  --color-status-progress: #1f4fd1;
++  --color-status-review: #6a42c2;
++  --color-status-rework: #9a5b0a;
++  --color-status-done: #1b7442;
++  --color-shade-1: #dbe5fb;
++  --color-shade-2: #a9c0f3;
++  --color-shade-3: #3f6ad8;
++  --color-shade-4: #1a3a9a;
++  --color-series-1: #2a78d6;
++  --color-series-2: #eb6834;
++  --color-series-3: #1baf7a;
++  --color-series-4: #eda100;
++  --color-series-other: #9aa3b2;
++
++  --font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
++  --font-display: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
++
++  --radius-sm: 4px;
++  --radius-md: 6px;
++  --radius-lg: 10px;
++
++  --shadow-overlay: 0 12px 32px rgb(15 29 58 / 0.18);
+ 
+   --animate-live: live 2.4s ease-in-out infinite;
+ 
+@@ -45,14 +65,96 @@
+ }
+ 
+ @layer base {
++  @media (prefers-color-scheme: dark) {
++    :root:not([data-theme='light']) {
++    --color-canvas: #0b1220;
++    --color-surface: #121b2c;
++    --color-subtle: #192438;
++    --color-line: #253149;
++    --color-line-strong: #5e6b88;
++    --color-ink: #e8ecf4;
++    --color-ink-soft: #aab4c6;
++    --color-ink-faint: #8c97ab;
++    --color-primary: #6f95ff;
++    --color-primary-strong: #9bb4ff;
++    --color-primary-tint: #1b2a4f;
++    --color-on-primary: #0b1220;
++    --color-chrome: #0d1628;
++    --color-chrome-ink: #e6ebf5;
++    --color-chrome-muted: #93a0ba;
++    --color-success: #4cc382;
++    --color-success-tint: #12301f;
++    --color-warning: #e3a54d;
++    --color-warning-tint: #36280f;
++    --color-danger: #f2786c;
++    --color-danger-tint: #3b1c1b;
++    --color-status-todo: #8c97ab;
++    --color-status-progress: #6f95ff;
++    --color-status-review: #a98bf0;
++    --color-status-rework: #e3a54d;
++    --color-status-done: #4cc382;
++    --color-shade-1: #1c2a4a;
++    --color-shade-2: #2b4791;
++    --color-shade-3: #7fa1f5;
++    --color-shade-4: #b8ccff;
++    --color-series-1: #3987e5;
++    --color-series-2: #d95926;
++    --color-series-3: #199e70;
++    --color-series-4: #c98500;
++    --color-series-other: #5d6779;
++      --shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.5);
++      color-scheme: dark;
++    }
++  }
++
++  :root[data-theme='dark'] {
++  --color-canvas: #0b1220;
++  --color-surface: #121b2c;
++  --color-subtle: #192438;
++  --color-line: #253149;
++  --color-line-strong: #5e6b88;
++  --color-ink: #e8ecf4;
++  --color-ink-soft: #aab4c6;
++  --color-ink-faint: #8c97ab;
++  --color-primary: #6f95ff;
++  --color-primary-strong: #9bb4ff;
++  --color-primary-tint: #1b2a4f;
++  --color-on-primary: #0b1220;
++  --color-chrome: #0d1628;
++  --color-chrome-ink: #e6ebf5;
++  --color-chrome-muted: #93a0ba;
++  --color-success: #4cc382;
++  --color-success-tint: #12301f;
++  --color-warning: #e3a54d;
++  --color-warning-tint: #36280f;
++  --color-danger: #f2786c;
++  --color-danger-tint: #3b1c1b;
++  --color-status-todo: #8c97ab;
++  --color-status-progress: #6f95ff;
++  --color-status-review: #a98bf0;
++  --color-status-rework: #e3a54d;
++  --color-status-done: #4cc382;
++  --color-shade-1: #1c2a4a;
++  --color-shade-2: #2b4791;
++  --color-shade-3: #7fa1f5;
++  --color-shade-4: #b8ccff;
++  --color-series-1: #3987e5;
++  --color-series-2: #d95926;
++  --color-series-3: #199e70;
++  --color-series-4: #c98500;
++  --color-series-other: #5d6779;
++    --shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.5);
++    color-scheme: dark;
++  }
++
+   html {
+-    font-family: var(--font-body);
++    font-family: var(--font-sans);
+     font-size: 15px;
+     line-height: 1.5;
+     font-variant-numeric: tabular-nums;
+     -webkit-font-smoothing: antialiased;
+     color: var(--color-ink);
+-    background: var(--color-paper);
++    background: var(--color-canvas);
+   }
+ 
+   body {
+@@ -64,30 +166,41 @@
+   h2,
+   h3 {
+     font-family: var(--font-display);
++    text-wrap: balance;
+   }
+ 
+   a {
+-    color: var(--color-stamp);
++    color: var(--color-primary);
+     text-underline-offset: 3px;
+   }
+ 
+   a:hover {
+-    color: var(--color-stamp-deep);
++    color: var(--color-primary-strong);
+   }
+ 
+   :focus-visible {
+-    outline: 3px solid color-mix(in srgb, var(--color-stamp) 45%, transparent);
++    outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+     outline-offset: 2px;
+     border-radius: 4px;
+   }
++
++  @media (prefers-reduced-motion: reduce) {
++    *,
++    *::before,
++    *::after {
++      animation: none !important;
++      transition: none !important;
++    }
++  }
+ }
+ 
+-/* Data tables repeat the same cell styling everywhere, so it lives here once. */
++/* Data tables repeat the same cell styling everywhere, so it lives here once (design system: DataTable). */
+ @layer components {
+   .data-table {
+     width: 100%;
+     border-collapse: collapse;
+     font-size: 14px;
++    line-height: 20px;
+ 
+     & th,
+     & td {
+@@ -98,13 +211,23 @@
+     }
+ 
+     & thead th {
++      padding-block: 10px;
+       font-size: 13px;
+       font-weight: 500;
+       color: var(--color-ink-soft);
++      background: var(--color-subtle);
+       border-bottom-color: var(--color-line-strong);
+       white-space: nowrap;
+     }
+ 
++    & tbody tr:last-child > * {
++      border-bottom: 0;
++    }
++
++    & tbody tr:hover > * {
++      background: color-mix(in srgb, var(--color-subtle) 60%, transparent);
++    }
++
+     & tbody th {
+       font-weight: 500;
+     }
+diff --git a/Front/src/lib/format.ts b/Front/src/lib/format.ts
+index 3d03f9c..61af7ed 100644
+--- a/Front/src/lib/format.ts
++++ b/Front/src/lib/format.ts
+@@ -4,7 +4,7 @@ import type { TaskStatus } from '../api/types'
+ const TZ = 'Asia/Kolkata'
+ 
+ export const taskStatusLabel: Record<TaskStatus, string> = {
+-  todo: 'To do',
++  todo: 'Not started',
+   in_progress: 'In progress',
+   in_review: 'In review',
+   done: 'Done',
+@@ -102,3 +102,24 @@ export function formatRating(value: number | null) {
+ export function plural(count: number, one: string, many = `${one}s`) {
+   return `${count} ${count === 1 ? one : many}`
+ }
++
++// "just now", "12 min ago", "3 h ago", "yesterday", then a date.
++export function formatAgo(iso: string, now = Date.now()) {
++  const minutes = Math.round((now - new Date(iso).getTime()) / 60_000)
++  if (minutes < 1) return 'just now'
++  if (minutes < 60) return `${minutes} min ago`
++  const hours = Math.round(minutes / 60)
++  if (hours < 24) return `${hours} h ago`
++  if (hours < 48) return 'yesterday'
++  return formatDate(iso)
++}
++
++// Deadline relative to now, for lists: "Due today", "Due in 3 days", "2 days late".
++export function formatDue(iso: string | null, now = Date.now()) {
++  if (!iso) return 'No deadline'
++  const days = Math.round((new Date(iso).getTime() - now) / 86_400_000)
++  if (new Date(iso).getTime() < now) return days === 0 ? 'Due earlier today' : `${plural(-days, 'day')} late`
++  if (days === 0) return 'Due today'
++  if (days === 1) return 'Due tomorrow'
++  return `Due in ${days} days`
++}
+diff --git a/Front/src/lib/status.ts b/Front/src/lib/status.ts
+index 21037e6..018ed13 100644
+--- a/Front/src/lib/status.ts
++++ b/Front/src/lib/status.ts
+@@ -3,24 +3,31 @@ import type { TaskStatus } from '../api/types'
+ 
+ // Class strings are written out in full so Tailwind can find them.
+ export const taskStatusDot: Record<TaskStatus, string> = {
+-  todo: 'bg-todo',
+-  in_progress: 'bg-progress',
+-  in_review: 'bg-review',
+-  done: 'bg-done',
+-  rework: 'bg-rework',
++  todo: 'bg-status-todo',
++  in_progress: 'bg-status-progress',
++  in_review: 'bg-status-review',
++  done: 'bg-status-done',
++  rework: 'bg-status-rework',
+ }
+ 
+ export const taskStatusText: Record<TaskStatus, string> = {
+   todo: 'text-ink-soft',
+-  in_progress: 'text-progress',
+-  in_review: 'text-review',
+-  done: 'text-done',
+-  rework: 'text-rework',
++  in_progress: 'text-status-progress',
++  in_review: 'text-status-review',
++  done: 'text-status-done',
++  rework: 'text-status-rework',
+ }
+ 
+ export const projectStatusDot: Record<ProjectStatus, string> = {
+-  planned: 'bg-todo',
+-  active: 'bg-progress',
+-  completed: 'bg-done',
+-  on_hold: 'bg-rework',
++  planned: 'bg-status-todo',
++  active: 'bg-status-progress',
++  completed: 'bg-status-done',
++  on_hold: 'bg-status-rework',
++}
++
++// Department chart colours by fixed slot (design system: series-1 to series-4, then series-other).
++const seriesFill = ['bg-series-other', 'bg-series-1', 'bg-series-2', 'bg-series-3', 'bg-series-4', 'bg-series-other']
++
++export function departmentFill(slot: number) {
++  return seriesFill[slot] ?? 'bg-series-other'
+ }
+diff --git a/Front/src/lib/useApi.ts b/Front/src/lib/useApi.ts
+index e798aa9..d510d2c 100644
+--- a/Front/src/lib/useApi.ts
++++ b/Front/src/lib/useApi.ts
+@@ -3,9 +3,25 @@ import { useCallback, useEffect, useState } from 'react'
+ type State<T> = { data: T | null; error: string | null; loading: boolean }
+ 
+ // Runs `load` whenever `key` changes. Stale responses from an older key are ignored.
+-export function useApi<T>(load: () => Promise<T>, key: string) {
++// With `refreshMs`, it also reloads on that interval while the tab is visible, keeping the old
++// data on screen until the new data arrives.
++export function useApi<T>(load: () => Promise<T>, key: string, refreshMs?: number) {
+   const [state, setState] = useState<State<T>>({ data: null, error: null, loading: true })
+   const [reloads, setReloads] = useState(0)
++  const [loadedAt, setLoadedAt] = useState<number | null>(null)
++
++  useEffect(() => {
++    if (!refreshMs) return
++    const id = window.setInterval(() => {
++      if (document.visibilityState === 'visible') setReloads((n) => n + 1)
++    }, refreshMs)
++    const onVisible = () => document.visibilityState === 'visible' && setReloads((n) => n + 1)
++    document.addEventListener('visibilitychange', onVisible)
++    return () => {
++      window.clearInterval(id)
++      document.removeEventListener('visibilitychange', onVisible)
++    }
++  }, [refreshMs])
+ 
+   useEffect(() => {
+     let current = true
+@@ -13,7 +29,10 @@ export function useApi<T>(load: () => Promise<T>, key: string) {
+ 
+     load()
+       .then((data) => {
+-        if (current) setState({ data, error: null, loading: false })
++        if (current) {
++          setState({ data, error: null, loading: false })
++          setLoadedAt(Date.now())
++        }
+       })
+       .catch((error: unknown) => {
+         if (current) {
+@@ -33,7 +52,7 @@ export function useApi<T>(load: () => Promise<T>, key: string) {
+   }, [key, reloads])
+ 
+   const reload = useCallback(() => setReloads((n) => n + 1), [])
+-  return { ...state, reload }
++  return { ...state, reload, loadedAt }
+ }
+ 
+ // Re-renders every `ms` so live durations keep counting.
+diff --git a/Front/src/pages/Login.tsx b/Front/src/pages/Login.tsx
+index b63117b..042e4a9 100644
+--- a/Front/src/pages/Login.tsx
++++ b/Front/src/pages/Login.tsx
+@@ -5,7 +5,7 @@ import { login } from '../api/auth'
+ import type { User } from '../api/types'
+ 
+ const inputClass =
+-  'min-h-11 w-full rounded-md border border-line-strong bg-panel px-3 text-ink focus:border-stamp focus:outline-none focus:ring-3 focus:ring-stamp/15'
++  'min-h-11 w-full rounded-md border border-line-strong bg-surface px-3 text-ink focus:border-primary focus:outline-none focus:ring-3 focus:ring-primary/15'
+ 
+ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
+   const [identifier, setIdentifier] = useState('')
+@@ -29,24 +29,24 @@ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
+ 
+   return (
+     <main className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+-      <div className="hidden flex-col justify-between bg-stamp-deep p-12 text-white lg:flex">
+-        <p className="flex items-center gap-2.5 font-display text-lg font-semibold [&_svg]:text-white">
+-          <ClockMark />
++      <div className="hidden flex-col justify-between bg-chrome p-12 text-chrome-ink lg:flex">
++        <p className="flex items-center gap-2.5 text-base font-semibold">
++          <ClockMark onChrome />
+           Task Tracker
+         </p>
+-        <p className="max-w-md font-display text-[40px] leading-[1.1] font-semibold tracking-tight">
++        <p className="max-w-md text-[34px] leading-[1.15] font-semibold tracking-tight">
+           Clock in, do the work, and let the hours speak for themselves.
+         </p>
+-        <p className="text-white/70">Time tracking and task management for your team.</p>
++        <p className="text-chrome-muted">Time tracking and task management for your team.</p>
+       </div>
+ 
+       <section aria-labelledby="login-title" className="flex items-center justify-center px-4 py-12 sm:px-8">
+         <div className="w-full max-w-sm">
+-          <p className="mb-10 flex items-center gap-2.5 font-display text-lg font-semibold lg:hidden">
++          <p className="mb-10 flex items-center gap-2.5 text-base font-semibold lg:hidden">
+             <ClockMark />
+             Task Tracker
+           </p>
+-          <h1 className="text-[34px] leading-tight font-bold tracking-tight">Sign in</h1>
++          <h1 className="text-[26px] leading-8 font-semibold tracking-tight">Sign in</h1>
+           <p className="mt-2 mb-8 text-ink-soft">
+             Admins see the team dashboard. Everyone else sees the tasks assigned to them.
+           </p>
+@@ -83,12 +83,12 @@ export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
+             />
+ 
+             {error && (
+-              <p className="mt-3 rounded-md border border-over/30 bg-over-tint px-3 py-2.5 text-sm text-over" role="alert">
++              <p className="mt-3 rounded-md border border-danger/30 bg-danger-tint px-3 py-2.5 text-sm text-danger" role="alert">
+                 {error}
+               </p>
+             )}
+ 
+-            <Button type="submit" variant="primary" className="mt-5" disabled={submitting}>
++            <Button type="submit" variant="primary" className="mt-5 min-h-11" disabled={submitting}>
+               {submitting ? 'Signing in…' : 'Sign in'}
+             </Button>
+           </form>
+diff --git a/Front/src/pages/MyTasks.tsx b/Front/src/pages/MyTasks.tsx
+index ad11caa..0659924 100644
+--- a/Front/src/pages/MyTasks.tsx
++++ b/Front/src/pages/MyTasks.tsx
+@@ -11,7 +11,7 @@ export function MyTasks({ user, onSignOut, signingOut }: { user: User; onSignOut
+ 
+   return (
+     <div className="min-h-screen">
+-      <header className="border-b border-line bg-panel">
++      <header className="border-b border-line bg-surface">
+         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
+           <Brand />
+           <div className="flex items-center gap-4">
+@@ -24,7 +24,7 @@ export function MyTasks({ user, onSignOut, signingOut }: { user: User; onSignOut
+       </header>
+ 
+       <main className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-8">
+-        <h1 className="text-[34px] leading-tight font-bold tracking-tight">Your tasks</h1>
++        <h1 className="text-[26px] leading-8 font-semibold tracking-tight">Your tasks</h1>
+         <DataState
+           state={tasks}
+           isEmpty={(d) => d.tasks.length === 0}
+diff --git a/Front/src/pages/admin/Attendance.tsx b/Front/src/pages/admin/Attendance.tsx
+index fd28571..4ad55a7 100644
+--- a/Front/src/pages/admin/Attendance.tsx
++++ b/Front/src/pages/admin/Attendance.tsx
+@@ -7,14 +7,14 @@ import { getAttendance, getPeople, type DayRange } from '../../api/admin/dashboa
+ 
+ // Timesheet shading. An 8-hour day lands in the third band.
+ const shades = [
+-  { min: 9, cell: 'bg-shade-4 text-white', label: 'Over 9h' },
+-  { min: 7, cell: 'bg-shade-3 text-white', label: '7–9h' },
++  { min: 9, cell: 'bg-shade-4 text-on-primary', label: 'Over 9h' },
++  { min: 7, cell: 'bg-shade-3 text-on-primary', label: '7–9h' },
+   { min: 4, cell: 'bg-shade-2 text-ink', label: '4–7h' },
+   { min: 0.01, cell: 'bg-shade-1 text-ink', label: 'Under 4h' },
+ ]
+ 
+ function cellClass(hours: number) {
+-  return shades.find((s) => hours >= s.min)?.cell ?? 'bg-panel'
++  return shades.find((s) => hours >= s.min)?.cell ?? 'bg-surface'
+ }
+ 
+ export function Attendance() {
+@@ -76,11 +76,11 @@ export function Attendance() {
+               return <Muted>{people.loading ? 'Loading people…' : 'No people to show yet.'}</Muted>
+             }
+             return (
+-              <div className="overflow-x-auto rounded-md border border-line-strong bg-panel">
++              <div className="overflow-x-auto rounded-md border border-line-strong bg-surface">
+                 <table className="w-full border-collapse text-sm">
+                   <thead>
+                     <tr className="border-b border-line-strong">
+-                      <th scope="col" className="sticky left-0 z-[1] bg-panel px-4 py-2.5 text-left font-medium text-ink-soft">
++                      <th scope="col" className="sticky left-0 z-[1] bg-surface px-4 py-2.5 text-left font-medium text-ink-soft">
+                         Person
+                       </th>
+                       {days.map((d) => (
+@@ -98,7 +98,7 @@ export function Attendance() {
+                       const total = days.reduce((sum, d) => sum + (hours.get(`${u.id}:${d}`) ?? 0), 0)
+                       return (
+                         <tr key={u.id} className="border-b border-line last:border-b-0">
+-                          <th scope="row" className="sticky left-0 z-[1] bg-panel px-4 py-2 text-left font-medium whitespace-nowrap">
++                          <th scope="row" className="sticky left-0 z-[1] bg-surface px-4 py-2 text-left font-medium whitespace-nowrap">
+                             <a href={href('people', u.id)}>{u.name}</a>
+                           </th>
+                           {days.map((d) => {
+@@ -106,7 +106,7 @@ export function Attendance() {
+                             return (
+                               <td
+                                 key={d}
+-                                className={`h-11 border-l border-paper text-center font-medium ${cellClass(h)}`}
++                                className={`h-11 border-l border-canvas text-center font-medium ${cellClass(h)}`}
+                                 title={`${u.name}, ${formatDay(d)}: ${formatHours(h)}`}
+                               >
+                                 {h > 0 ? h.toFixed(1) : ''}
+diff --git a/Front/src/pages/admin/Overview.tsx b/Front/src/pages/admin/Overview.tsx
+index 944723c..e572d97 100644
+--- a/Front/src/pages/admin/Overview.tsx
++++ b/Front/src/pages/admin/Overview.tsx
+@@ -1,193 +1,703 @@
+-import { useState } from 'react'
+-import { Button, DataState, LiveDot, Muted, PageHeader, Section, SectionHead, Select, Tally } from '../../components/ui'
++import { useState, type ReactNode } from 'react'
+ import {
+-  dayInIndia,
++  getSummary,
++  type AttentionTask,
++  type DashboardSummary,
++  type DepartmentSummary,
++  type ProjectProgress,
++} from '../../api/admin/dashboard'
++import { Button, LiveDot, OverdueTag, PageHeader, ProjectStatusPill, TaskStatusPill } from '../../components/ui'
++import {
++  formatAgo,
+   formatDay,
++  formatDue,
+   formatHours,
+   formatMinutes,
+-  formatPct,
+-  formatRating,
+   formatTime,
+-  lastDays,
+   minutesSince,
+   plural,
+   taskStatusLabel,
+-  taskStatuses,
+ } from '../../lib/format'
+ import { href } from '../../lib/router'
+-import { taskStatusDot } from '../../lib/status'
++import { departmentFill } from '../../lib/status'
+ import { useApi, useNow } from '../../lib/useApi'
+-import { getAttendance, getOverview, getRanking, type RankMetric, type RankedUser } from '../../api/admin/dashboard'
+ 
+-const metrics: { key: RankMetric; label: string; show: (u: RankedUser) => string }[] = [
+-  { key: 'tasks_done', label: 'Tasks done', show: (u) => plural(u.tasks_done, 'task') },
+-  { key: 'on_time_pct', label: 'On time', show: (u) => formatPct(u.on_time_pct) },
+-  { key: 'avg_rating', label: 'Average rating', show: (u) => formatRating(u.avg_rating) },
+-  { key: 'hours_clocked', label: 'Hours clocked', show: (u) => formatHours(u.hours_clocked) },
+-  { key: 'rework_bounces', label: 'Fewest reworks', show: (u) => plural(u.rework_bounces, 'rework') },
+-]
++const REFRESH_MS = 60_000
+ 
+ export function Overview() {
+-  const today = dayInIndia()
+-  const overview = useApi(getOverview, 'overview')
+-  const clock = useApi(() => getAttendance({ from: today, to: today }), `clock-${today}`)
++  const summary = useApi(getSummary, 'summary', REFRESH_MS)
++  const now = useNow(15_000)
++  const data = summary.data
+ 
+   return (
+     <>
+-      <PageHeader title="Today" lede={formatDay(today, 'long')} />
+-
+-      <section aria-labelledby="clock-title" className="mb-10 rounded-lg bg-stamp-deep p-6 text-white sm:p-8">
+-        <div className="mb-5 flex items-center justify-between gap-4">
+-          <h2 id="clock-title" className="text-xl font-semibold text-white">
+-            On the clock
+-          </h2>
+-          <Button variant="onDark" onClick={clock.reload}>
++      <PageHeader
++        title="Overview"
++        lede={
++          data ? (
++            <>
++              {formatDay(data.date, 'long')}.{' '}
++              {summary.loading
++                ? 'Updating…'
++                : summary.loadedAt
++                  ? `Updated at ${formatTime(new Date(summary.loadedAt).toISOString())}.`
++                  : ''}
++            </>
++          ) : (
++            'Loading the latest numbers…'
++          )
++        }
++        actions={
++          <Button onClick={summary.reload} disabled={summary.loading}>
+             Refresh
+           </Button>
+-        </div>
+-        {clock.error ? (
+-          <p role="alert" className="text-white/90">
+-            {clock.error}
++        }
++      />
++
++      {summary.error && (
++        <div
++          className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger-tint px-4 py-3 text-danger"
++          role="alert"
++        >
++          <p>
++            {data ? 'Showing the last numbers that loaded. ' : ''}
++            {summary.error}
+           </p>
+-        ) : !clock.data ? (
+-          <p className="text-white/70" role="status">
++          <Button onClick={summary.reload}>Try again</Button>
++        </div>
++      )}
++
++      {!data ? (
++        !summary.error && (
++          <p className="py-10 text-ink-soft" role="status">
+             Loading…
+           </p>
++        )
++      ) : (
++        <div className="grid gap-6">
++          <Kpis data={data} />
++
++          <div className="grid gap-6 xl:grid-cols-12">
++            <div className="min-w-0 xl:col-span-8">
++              <Attention attention={data.attention} now={now} />
++            </div>
++            <div className="min-w-0 xl:col-span-4">
++              <OnTheClock data={data} now={now} />
++            </div>
++          </div>
++
++          <ProjectsPanel projects={data.projects} departments={data.departments} now={now} />
++          <DepartmentsPanel departments={data.departments} />
++
++          <div className="grid items-start gap-6 xl:grid-cols-12">
++            <div className="min-w-0 xl:col-span-7">
++              <HoursTrend data={data} />
++            </div>
++            <div className="min-w-0 xl:col-span-5">
++              <Activity activity={data.activity} now={now} />
++            </div>
++          </div>
++        </div>
++      )}
++    </>
++  )
++}
++
++// ---- Building blocks --------------------------------------------------------------------
++
++function Panel({
++  id,
++  title,
++  meta,
++  action,
++  children,
++  flush = false,
++}: {
++  id: string
++  title: string
++  meta?: ReactNode
++  action?: ReactNode
++  children: ReactNode
++  flush?: boolean
++}) {
++  return (
++    <section aria-labelledby={id} className="h-full overflow-hidden rounded-lg border border-line bg-surface">
++      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line px-5 py-3.5">
++        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3">
++          <h2 id={id} className="text-[17px] leading-6 font-semibold">
++            {title}
++          </h2>
++          {meta && <p className="text-sm text-ink-soft">{meta}</p>}
++        </div>
++        {action}
++      </header>
++      <div className={flush ? '' : 'p-5'}>{children}</div>
++    </section>
++  )
++}
++
++function Empty({ children }: { children: ReactNode }) {
++  return <p className="px-5 py-8 text-center text-sm text-ink-soft">{children}</p>
++}
++
++function Swatch({ slot }: { slot: number }) {
++  return <i className={`inline-block size-2.5 shrink-0 rounded-sm ${departmentFill(slot)}`} aria-hidden="true" />
++}
++
++// ---- KPI strip ---------------------------------------------------------------------------
++
++function Kpis({ data }: { data: DashboardSummary }) {
++  const { people, tasks } = data
++  const cells: { label: string; value: number; context: string; to?: string; alert?: boolean }[] = [
++    { label: 'Active people', value: people.active, context: `${people.clocked_in_now} clocked in now`, to: href('people') },
++    { label: 'Not started', value: tasks.not_started, context: 'Assigned, no work yet', to: href('tasks', 'status', 'todo') },
++    {
++      label: 'Pending',
++      value: tasks.pending,
++      context: `${tasks.in_progress} in progress, ${tasks.in_review} in review, ${tasks.rework} rework`,
++    },
++    {
++      label: 'Completed',
++      value: tasks.completed,
++      context: `${tasks.completed_this_week} in the last 7 days`,
++      to: href('tasks', 'status', 'done'),
++    },
++    {
++      label: 'Overdue',
++      value: tasks.overdue,
++      context: `${tasks.due_this_week} more due this week`,
++      to: href('tasks', 'overdue'),
++      alert: tasks.overdue > 0,
++    },
++  ]
++
++  return (
++    <section aria-label="Key numbers" className="overflow-hidden rounded-lg border border-line bg-surface">
++      <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-3 lg:grid-cols-5">
++        {cells.map((c) => (
++          <div key={c.label} className="bg-surface px-5 py-4 last:max-sm:col-span-2">
++            <dt className="text-[13px] font-medium text-ink-soft">{c.label}</dt>
++            <dd className={`mt-0.5 text-[30px] leading-9 font-semibold tracking-tight ${c.alert ? 'text-danger' : ''}`}>
++              {c.to ? (
++                <a
++                  href={c.to}
++                  className={`no-underline hover:underline ${c.alert ? 'text-danger hover:text-danger' : 'text-ink hover:text-ink'}`}
++                >
++                  {c.value}
++                </a>
++              ) : (
++                c.value
++              )}
++            </dd>
++            <dd className="mt-0.5 text-xs text-ink-faint">{c.context}</dd>
++          </div>
++        ))}
++      </dl>
++    </section>
++  )
++}
++
++// ---- Needs attention ---------------------------------------------------------------------
++
++const attentionTabs = [
++  { key: 'waiting_review', label: 'Waiting for review', empty: 'Nothing is waiting for your review.' },
++  { key: 'overdue', label: 'Overdue', empty: 'No tasks are overdue.' },
++  { key: 'due_soon', label: 'Due this week', empty: 'Nothing else is due in the next 7 days.' },
++] as const
++
++type AttentionKey = (typeof attentionTabs)[number]['key']
++
++function Attention({ attention, now }: { attention: DashboardSummary['attention']; now: number }) {
++  const [tab, setTab] = useState<AttentionKey>(
++    attention.waiting_review.count ? 'waiting_review' : attention.overdue.count ? 'overdue' : 'due_soon',
++  )
++  const current = attention[tab]
++  const config = attentionTabs.find((t) => t.key === tab)!
++  const moreLink =
++    tab === 'overdue' ? href('tasks', 'overdue') : tab === 'waiting_review' ? href('tasks', 'status', 'in_review') : href('tasks')
++
++  return (
++    <Panel id="attention-title" title="Needs attention" flush>
++      <div role="tablist" aria-label="Needs attention" className="flex gap-1 overflow-x-auto border-b border-line px-3">
++        {attentionTabs.map((t) => (
++          <button
++            key={t.key}
++            id={`attention-tab-${t.key}`}
++            role="tab"
++            type="button"
++            aria-selected={tab === t.key}
++            aria-controls="attention-panel"
++            onClick={() => setTab(t.key)}
++            className="-mb-px flex cursor-pointer items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium whitespace-nowrap text-ink-soft hover:text-ink aria-selected:border-primary aria-selected:text-ink"
++          >
++            {t.label}
++            <span
++              className={`rounded-sm px-1.5 text-xs font-semibold ${t.key === 'overdue' && attention.overdue.count ? 'bg-danger-tint text-danger' : 'bg-subtle text-ink-soft'}`}
++            >
++              {attention[t.key].count}
++            </span>
++          </button>
++        ))}
++      </div>
++      <div id="attention-panel" role="tabpanel" aria-labelledby={`attention-tab-${tab}`}>
++        {current.tasks.length === 0 ? (
++          <Empty>{config.empty}</Empty>
+         ) : (
+-          <ClockList entries={clock.data.clocked_in_now} />
++          <ul>
++            {current.tasks.map((t) => (
++              <AttentionRow key={t.id} task={t} now={now} />
++            ))}
++          </ul>
++        )}
++        {current.count > current.tasks.length && (
++          <p className="border-t border-line px-5 py-3 text-sm">
++            <a href={moreLink}>See all {current.count}</a>
++          </p>
+         )}
+-      </section>
++      </div>
++    </Panel>
++  )
++}
+ 
+-      <DataState state={overview}>
+-        {(data) => (
++function AttentionRow({ task, now }: { task: AttentionTask; now: number }) {
++  return (
++    <li className="grid gap-x-4 gap-y-1 border-b border-line px-5 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_120px_170px] sm:items-center">
++      <div className="min-w-0">
++        <p className="truncate font-medium">{task.name}</p>
++        <p className="truncate text-xs text-ink-faint">{task.project?.name ?? 'No project'}</p>
++      </div>
++      <p className="text-sm">
++        {task.assignee ? (
++          <a href={href('people', task.assignee.id)}>{task.assignee.name}</a>
++        ) : (
++          <span className="text-ink-faint">Unassigned</span>
++        )}
++      </p>
++      <div className="flex flex-wrap items-center gap-x-2 text-sm">
++        {task.overdue ? (
++          <span className="font-medium text-danger">{formatDue(task.deadline, now)}</span>
++        ) : (
+           <>
+-            <Tally
+-              items={[
+-                { label: 'Hours clocked today', value: formatHours(data.attendance.hours_today) },
+-                {
+-                  label: 'Overdue tasks',
+-                  value: data.tasks.overdue ? (
+-                    <a href={href('tasks', 'overdue')} className="text-over hover:text-over">
+-                      {data.tasks.overdue}
+-                    </a>
+-                  ) : (
+-                    0
+-                  ),
+-                  alert: data.tasks.overdue > 0,
+-                },
+-                { label: 'Active people', value: data.users.active - data.users.admins },
+-                { label: 'Active projects', value: data.projects.by_status.active },
+-              ]}
+-            />
+-
+-            <Section labelledBy="pipeline-title">
+-              <SectionHead id="pipeline-title" title="Task pipeline">
+-                <p className="text-sm text-ink-soft">{plural(data.tasks.total, 'task')} across all projects</p>
+-              </SectionHead>
+-              {data.tasks.total === 0 ? (
+-                <Muted>No tasks yet. Tasks you assign will show up here by status.</Muted>
+-              ) : (
+-                <>
+-                  <div className="flex h-3.5 gap-0.5 overflow-hidden rounded-sm" role="img" aria-label="Tasks by status">
+-                    {taskStatuses.map((s) =>
+-                      data.tasks.by_status[s] ? (
+-                        <span
+-                          key={s}
+-                          className={taskStatusDot[s]}
+-                          style={{ flexGrow: data.tasks.by_status[s] }}
+-                          title={`${taskStatusLabel[s]}: ${data.tasks.by_status[s]}`}
+-                        />
+-                      ) : null,
+-                    )}
+-                  </div>
+-                  <ul className="mt-3.5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-soft">
+-                    {taskStatuses.map((s) => (
+-                      <li key={s} className="flex items-center gap-2">
+-                        <i className={`size-2.5 rounded-sm ${taskStatusDot[s]}`} aria-hidden="true" />
+-                        {taskStatusLabel[s]}
+-                        <strong className="font-semibold text-ink">{data.tasks.by_status[s]}</strong>
+-                      </li>
+-                    ))}
+-                  </ul>
+-                </>
+-              )}
+-            </Section>
++            <TaskStatusPill status={task.status} />
++            <span className="text-xs text-ink-faint">{formatDue(task.deadline, now)}</span>
+           </>
+         )}
+-      </DataState>
++      </div>
++    </li>
++  )
++}
+ 
+-      <Ranking />
+-    </>
++// ---- On the clock ------------------------------------------------------------------------
++
++function OnTheClock({ data, now }: { data: DashboardSummary; now: number }) {
++  const deptName = new Map(data.departments.map((d) => [d.id, d.name]))
++
++  return (
++    <Panel
++      id="clock-title"
++      title="On the clock"
++      meta={`${data.on_the_clock.length} now`}
++      action={
++        <a href={href('attendance')} className="text-sm">
++          Attendance
++        </a>
++      }
++      flush
++    >
++      {data.on_the_clock.length === 0 ? (
++        <Empty>Nobody is clocked in right now.</Empty>
++      ) : (
++        <ul>
++          {data.on_the_clock.map((e) => (
++            <li key={e.user_id} className="flex items-center gap-3 border-b border-line px-5 py-2.5 last:border-b-0">
++              <LiveDot />
++              <div className="min-w-0 flex-1">
++                <a href={href('people', e.user_id)} className="font-medium">
++                  {e.name ?? `User ${e.user_id}`}
++                </a>
++                <p className="truncate text-xs text-ink-faint">
++                  {deptName.get(e.department_id) ?? 'No department'}, since {formatTime(e.clock_in)}
++                </p>
++              </div>
++              <span className="text-[15px] font-semibold">{formatMinutes(minutesSince(e.clock_in, now))}</span>
++            </li>
++          ))}
++        </ul>
++      )}
++      <p className="border-t border-line bg-subtle px-5 py-3 text-sm text-ink-soft">
++        <strong className="font-semibold text-ink">{formatHours(data.people.hours_today)}</strong> clocked today across the
++        team
++      </p>
++    </Panel>
+   )
+ }
+ 
+-function ClockList({ entries }: { entries: { user_id: number; name: string | null; clock_in: string }[] }) {
+-  const now = useNow(15_000)
++// ---- Projects, with progress by department -----------------------------------------------
++
++type DeptBucket = ProjectProgress['by_department'][number]
+ 
+-  if (entries.length === 0) {
+-    return <p className="text-white/75">Nobody is clocked in right now.</p>
+-  }
++function ProjectsPanel({
++  projects,
++  departments,
++  now,
++}: {
++  projects: ProjectProgress[]
++  departments: DepartmentSummary[]
++  now: number
++}) {
++  const hasUnassigned = projects.some((p) => p.by_department.some((b) => b.unassigned))
++  const columns: { key: string; name: string; slot: number; match: (b: DeptBucket) => boolean }[] = [
++    ...departments.map((d) => ({
++      key: String(d.id),
++      name: d.name,
++      slot: d.slot,
++      match: (b: DeptBucket) => !b.unassigned && b.department_id === d.id,
++    })),
++    ...(hasUnassigned ? [{ key: 'unassigned', name: 'Unassigned', slot: 0, match: (b: DeptBucket) => b.unassigned }] : []),
++  ]
++  const active = projects.filter((p) => p.status === 'active').length
+ 
+   return (
+-    <ul className="flex flex-col sm:flex-row sm:flex-wrap">
+-      {entries.map((e) => (
+-        <li
+-          key={e.user_id}
+-          className="border-t border-white/15 first:border-t-0 sm:min-w-[230px] sm:flex-none sm:border-t-0 sm:border-l sm:first:border-l-0"
+-        >
+-          <a
+-            href={href('people', e.user_id)}
+-            className="grid gap-0.5 rounded-md px-4 py-3.5 text-white no-underline hover:bg-white/5 hover:text-white sm:pr-10"
+-          >
+-            <span className="flex items-center gap-2 font-medium">
+-              <LiveDot light />
+-              {e.name ?? `User ${e.user_id}`}
+-            </span>
+-            <span className="font-display text-[40px] leading-none font-semibold tracking-tight">
+-              {formatMinutes(minutesSince(e.clock_in, now))}
+-            </span>
+-            <span className="text-sm text-white/70">since {formatTime(e.clock_in)}</span>
+-          </a>
+-        </li>
+-      ))}
+-    </ul>
++    <Panel
++      id="projects-title"
++      title="Projects"
++      meta={`${plural(projects.length, 'project')}, ${active} active. Each department column shows its tasks done of tasks assigned.`}
++      action={
++        <a href={href('projects')} className="text-sm">
++          All projects
++        </a>
++      }
++      flush
++    >
++      {projects.length === 0 ? (
++        <Empty>No projects yet.</Empty>
++      ) : (
++        <div className="overflow-x-auto">
++          <table className="data-table min-w-[900px]">
++            <thead>
++              <tr>
++                <th scope="col" className="min-w-48">
++                  Project
++                </th>
++                <th scope="col">Status</th>
++                <th scope="col" className="w-52">
++                  Progress
++                </th>
++                {columns.map((c) => (
++                  <th scope="col" key={c.key} className="w-28">
++                    <span className="inline-flex items-center gap-1.5">
++                      <Swatch slot={c.slot} />
++                      {c.name}
++                    </span>
++                  </th>
++                ))}
++              </tr>
++            </thead>
++            <tbody>
++              {projects.map((p) => (
++                <tr key={p.id}>
++                  <th scope="row">
++                    <a href={href('tasks', 'project', p.id)}>{p.name}</a>
++                    <span className="mt-0.5 block text-xs font-normal text-ink-faint">
++                      {p.status === 'completed' ? 'Completed' : formatDue(p.deadline, now)}
++                      {p.tasks_overdue > 0 && <span className="text-danger">, {plural(p.tasks_overdue, 'task')} overdue</span>}
++                    </span>
++                  </th>
++                  <td className="whitespace-nowrap">
++                    <ProjectStatusPill status={p.status} />
++                    {p.overdue && <OverdueTag />}
++                  </td>
++                  <td>
++                    <div className="flex items-center gap-3">
++                      <div
++                        className="h-1.5 flex-1 overflow-hidden rounded-full bg-subtle"
++                        role="img"
++                        aria-label={`${p.progress_pct}% done`}
++                      >
++                        <span className="block h-full rounded-full bg-primary" style={{ width: `${p.progress_pct}%` }} />
++                      </div>
++                      <span className="w-10 text-right font-semibold">{p.progress_pct}%</span>
++                    </div>
++                    <span className="text-xs text-ink-faint">
++                      {p.tasks_done} of {plural(p.task_count, 'task')} done
++                    </span>
++                  </td>
++                  {columns.map((c) => {
++                    const b = p.by_department.find(c.match)
++                    return (
++                      <td key={c.key}>
++                        {b ? (
++                          <div className="grid gap-1" aria-label={`${c.name}: ${b.done} of ${b.total} done`}>
++                            <span aria-hidden="true">
++                              <strong className="font-semibold">{b.done}</strong>
++                              <span className="text-ink-faint"> / {b.total}</span>
++                            </span>
++                            <div className="h-1 overflow-hidden rounded-full bg-subtle" aria-hidden="true">
++                              <span
++                                className={`block h-full rounded-full ${departmentFill(c.slot)}`}
++                                style={{ width: `${(100 * b.done) / b.total}%` }}
++                              />
++                            </div>
++                          </div>
++                        ) : (
++                          <span className="text-ink-faint">—</span>
++                        )}
++                      </td>
++                    )
++                  })}
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      )}
++    </Panel>
+   )
+ }
+ 
+-function Ranking() {
+-  const [by, setBy] = useState<RankMetric>('tasks_done')
+-  const range = lastDays(30)
+-  const ranking = useApi(() => getRanking(by, range), `rank-${by}-${range.from}`)
+-  const metric = metrics.find((m) => m.key === by)!
++// ---- Departments -------------------------------------------------------------------------
+ 
++function DepartmentsPanel({ departments }: { departments: DepartmentSummary[] }) {
+   return (
+-    <Section labelledBy="rank-title">
+-      <SectionHead id="rank-title" title="Ranking, last 30 days">
+-        <Select label="Rank by" value={by} onChange={(v) => setBy(v as RankMetric)}>
+-          {metrics.map((m) => (
+-            <option key={m.key} value={m.key}>
+-              {m.label}
+-            </option>
+-          ))}
+-        </Select>
+-      </SectionHead>
+-      <DataState state={ranking} isEmpty={(d) => d.users.length === 0} empty="No active people to rank yet.">
+-        {(data) => (
+-          <ol className="max-w-2xl">
+-            {data.users.map((u) => (
+-              <li key={u.id} className="flex items-baseline gap-4 border-b border-line py-3">
+-                <span className="w-6 font-display text-xl font-semibold text-ink-faint">{u.rank ?? '–'}</span>
+-                <a href={href('people', u.id)} className="font-medium">
+-                  {u.name}
+-                </a>
+-                <span className={`ml-auto ${u.rank === null ? 'text-ink-faint' : 'font-medium'}`}>
+-                  {u.rank === null ? 'No data yet' : metric.show(u)}
++    <Panel id="departments-title" title="Departments" meta="Hours and time on tasks cover the last 7 days." flush>
++      {departments.length === 0 ? (
++        <Empty>No departments yet. Add departments to compare teams here.</Empty>
++      ) : (
++        <div className="overflow-x-auto">
++          <table className="data-table min-w-[880px]">
++            <thead>
++              <tr>
++                <th scope="col">Department</th>
++                <th scope="col" className="num">
++                  People
++                </th>
++                <th scope="col" className="num">
++                  Working now
++                </th>
++                <th scope="col" className="num">
++                  Open tasks
++                </th>
++                <th scope="col" className="num">
++                  Overdue
++                </th>
++                <th scope="col" className="num">
++                  Done
++                </th>
++                <th scope="col" className="num">
++                  Hours
++                </th>
++                <th scope="col" className="w-44">
++                  Time on tasks
++                </th>
++                <th scope="col" className="num">
++                  Rating
++                </th>
++              </tr>
++            </thead>
++            <tbody>
++              {departments.map((d) => (
++                <tr key={d.id ?? 'none'}>
++                  <th scope="row">
++                    <span className="inline-flex items-center gap-2">
++                      <Swatch slot={d.slot} />
++                      {d.name}
++                    </span>
++                  </th>
++                  <td className="num">{d.members}</td>
++                  <td className="num">
++                    {d.active_now > 0 ? (
++                      <span className="font-medium text-success">{d.active_now}</span>
++                    ) : (
++                      <span className="text-ink-faint">0</span>
++                    )}
++                  </td>
++                  <td className="num">{d.open_tasks}</td>
++                  <td className={`num ${d.overdue_tasks ? 'font-semibold text-danger' : ''}`}>{d.overdue_tasks}</td>
++                  <td className="num">{d.completed_tasks}</td>
++                  <td className="num">{formatHours(d.hours_week)}</td>
++                  <td>
++                    {d.utilization_pct === null ? (
++                      <span className="text-ink-faint">No hours yet</span>
++                    ) : (
++                      <div className="flex items-center gap-3">
++                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-subtle" aria-hidden="true">
++                          <span className="block h-full rounded-full bg-primary" style={{ width: `${d.utilization_pct}%` }} />
++                        </div>
++                        <span className="w-10 text-right">{d.utilization_pct}%</span>
++                      </div>
++                    )}
++                  </td>
++                  <td className="num">
++                    {d.avg_rating === null ? <span className="text-ink-faint">—</span> : d.avg_rating.toFixed(1)}
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      )}
++    </Panel>
++  )
++}
++
++// ---- Team hours, last 14 days (stacked by department) ------------------------------------
++
++function niceStep(max: number) {
++  for (const step of [5, 10, 20, 25, 50, 100, 200]) if (max / step <= 4) return step
++  return 500
++}
++
++const CHART_HEIGHT = 220
++
++function HoursTrend({ data }: { data: DashboardSummary }) {
++  const [hover, setHover] = useState<number | null>(null)
++  const { days, series } = data.hours_trend
++  const depts = new Map(data.departments.map((d) => [d.id, d]))
++  const rows = series.filter((s) => depts.has(s.department_id))
++  const totals = days.map((_, i) => rows.reduce((sum, s) => sum + s.values[i], 0))
++  const peak = Math.max(1, ...totals)
++  const step = niceStep(peak)
++  const max = Math.ceil(peak / step) * step
++  const ticks = Array.from({ length: max / step + 1 }, (_, i) => i * step)
++  const grandTotal = totals.reduce((a, b) => a + b, 0)
++
++  return (
++    <Panel id="hours-title" title="Team hours" meta={`Last 14 days, ${formatHours(grandTotal)} in total`}>
++      {grandTotal === 0 ? (
++        <p className="py-8 text-center text-sm text-ink-soft">No hours clocked in the last 14 days.</p>
++      ) : (
++        <>
++          <ul className="mb-4 flex flex-wrap gap-x-5 gap-y-1.5 text-sm" aria-label="Hours by department">
++            {rows.map((s) => {
++              const d = depts.get(s.department_id)!
++              return (
++                <li key={String(s.department_id)} className="flex items-center gap-2">
++                  <Swatch slot={d.slot} />
++                  <span className="text-ink-soft">{d.name}</span>
++                  <strong className="font-semibold">{formatHours(s.values.reduce((a, b) => a + b, 0))}</strong>
++                </li>
++              )
++            })}
++          </ul>
++
++          <div className="grid grid-cols-[36px_minmax(0,1fr)] gap-2">
++            <div className="relative" style={{ height: CHART_HEIGHT }} aria-hidden="true">
++              {ticks.map((t) => (
++                <span
++                  key={t}
++                  className="absolute right-0 translate-y-1/2 text-xs text-ink-faint"
++                  style={{ bottom: `${(t / max) * 100}%` }}
++                >
++                  {t}h
+                 </span>
+-              </li>
+-            ))}
+-          </ol>
+-        )}
+-      </DataState>
+-    </Section>
++              ))}
++            </div>
++            <div className="relative" style={{ height: CHART_HEIGHT }}>
++              {ticks.map((t) => (
++                <div
++                  key={t}
++                  className={`absolute inset-x-0 border-t ${t === 0 ? 'border-line-strong' : 'border-line'}`}
++                  style={{ bottom: `${(t / max) * 100}%` }}
++                  aria-hidden="true"
++                />
++              ))}
++              <ol className="relative flex h-full items-end gap-[3px] sm:gap-1.5" aria-label="Hours clocked per day">
++                {days.map((day, i) => {
++                  const segments = rows.map((s) => ({ s, v: s.values[i] })).filter((x) => x.v > 0)
++                  return (
++                    <li
++                      key={day}
++                      tabIndex={0}
++                      aria-label={`${formatDay(day)}: ${formatHours(totals[i])}`}
++                      onMouseEnter={() => setHover(i)}
++                      onMouseLeave={() => setHover(null)}
++                      onFocus={() => setHover(i)}
++                      onBlur={() => setHover(null)}
++                      className={`flex h-full min-w-0 flex-1 flex-col-reverse gap-[2px] rounded-t-sm ${hover === i ? 'bg-subtle' : ''}`}
++                    >
++                      {segments.map(({ s, v }, k) => (
++                        <span
++                          key={String(s.department_id)}
++                          className={`block w-full shrink-0 ${departmentFill(depts.get(s.department_id)!.slot)} ${k === segments.length - 1 ? 'rounded-t-sm' : ''}`}
++                          style={{ height: `${Math.max(1, (v / max) * CHART_HEIGHT - 2)}px` }}
++                        />
++                      ))}
++                    </li>
++                  )
++                })}
++              </ol>
++              {hover !== null && (
++                <div
++                  className={`pointer-events-none absolute top-1 z-10 w-52 rounded-md border border-line bg-surface p-3 text-sm shadow-overlay ${hover >= days.length / 2 ? 'left-1' : 'right-1'}`}
++                >
++                  <p className="mb-1.5 font-semibold">{formatDay(days[hover], 'long')}</p>
++                  {rows.map((s) => {
++                    const d = depts.get(s.department_id)!
++                    return (
++                      <p key={String(s.department_id)} className="flex items-center gap-2">
++                        <Swatch slot={d.slot} />
++                        <span className="flex-1 text-ink-soft">{d.name}</span>
++                        <span>{formatHours(s.values[hover])}</span>
++                      </p>
++                    )
++                  })}
++                  <p className="mt-1.5 flex justify-between border-t border-line pt-1.5 font-semibold">
++                    <span>Total</span>
++                    <span>{formatHours(totals[hover])}</span>
++                  </p>
++                </div>
++              )}
++            </div>
++          </div>
++          <p className="mt-2 ml-[44px] flex justify-between text-xs text-ink-faint" aria-hidden="true">
++            <span>{formatDay(days[0])}</span>
++            <span>{formatDay(days[Math.floor(days.length / 2)])}</span>
++            <span>{formatDay(days[days.length - 1])}</span>
++          </p>
++        </>
++      )}
++    </Panel>
++  )
++}
++
++// ---- Recent activity ---------------------------------------------------------------------
++
++function Activity({ activity, now }: { activity: DashboardSummary['activity']; now: number }) {
++  return (
++    <Panel id="activity-title" title="Recent activity" flush>
++      {activity.length === 0 ? (
++        <Empty>Status changes will appear here as people work.</Empty>
++      ) : (
++        <ul>
++          {activity.map((a) => (
++            <li key={a.id} className="flex gap-3 border-b border-line px-5 py-3 last:border-b-0">
++              <span
++                className="grid size-7 shrink-0 place-items-center rounded-full bg-primary-tint text-xs font-semibold text-primary"
++                aria-hidden="true"
++              >
++                {(a.actor?.name ?? '?').slice(0, 1).toUpperCase()}
++              </span>
++              <div className="min-w-0 flex-1 text-sm">
++                <p>
++                  <strong className="font-medium">{a.actor?.name ?? 'Someone'}</strong>{' '}
++                  {a.old_status === null ? 'added' : 'moved'}{' '}
++                  <span className="font-medium">{a.task?.name ?? 'a deleted task'}</span>
++                  {a.old_status !== null && (
++                    <>
++                      {' '}
++                      to <TaskStatusPill status={a.new_status} />
++                    </>
++                  )}
++                </p>
++                <p className="text-xs text-ink-faint">
++                  {formatAgo(a.changed_at, now)}
++                  {a.old_status !== null && `, from ${taskStatusLabel[a.old_status]}`}
++                </p>
++              </div>
++            </li>
++          ))}
++        </ul>
++      )}
++    </Panel>
+   )
+ }
+diff --git a/Front/src/pages/admin/People.tsx b/Front/src/pages/admin/People.tsx
+index a309505..9a26a28 100644
+--- a/Front/src/pages/admin/People.tsx
++++ b/Front/src/pages/admin/People.tsx
+@@ -1,4 +1,5 @@
+ import { useState } from 'react'
++import { Ranking } from '../../components/Ranking'
+ import { UserDialog } from '../../components/UserDialog'
+ import { Button, Check, DataState, LiveDot, PageHeader, RangePicker, Sub, SuccessNotice, TableWrap, Toolbar } from '../../components/ui'
+ import { takeFlash } from '../../lib/flash'
+@@ -62,7 +63,7 @@ export function People() {
+               </thead>
+               <tbody>
+                 {data.users.map((u) => (
+-                  <tr key={u.id} className={u.is_active ? 'hover:bg-panel' : 'text-ink-faint'}>
++                  <tr key={u.id} className={u.is_active ? undefined : 'text-ink-faint'}>
+                     <th scope="row">
+                       <a href={href('people', u.id)}>{u.name}</a>
+                       <Sub>
+@@ -74,7 +75,7 @@ export function People() {
+                       {!u.is_active ? (
+                         'Deactivated'
+                       ) : u.clocked_in ? (
+-                        <span className="inline-flex items-center gap-2 font-medium text-done">
++                        <span className="inline-flex items-center gap-2 font-medium text-status-done">
+                           <LiveDot /> Clocked in
+                         </span>
+                       ) : (
+@@ -84,7 +85,7 @@ export function People() {
+                     <td className="num">{formatHours(u.hours_clocked)}</td>
+                     <td className="num">{u.tasks_done}</td>
+                     <td className="num">{u.open_tasks}</td>
+-                    <td className={`num ${u.overdue_tasks ? 'font-semibold text-over' : ''}`}>{u.overdue_tasks}</td>
++                    <td className={`num ${u.overdue_tasks ? 'font-semibold text-danger' : ''}`}>{u.overdue_tasks}</td>
+                     <td className="num">{formatPct(u.on_time_pct)}</td>
+                     <td className="num">{formatRating(u.avg_rating)}</td>
+                     <td className="num">{u.rework_bounces}</td>
+@@ -95,6 +96,9 @@ export function People() {
+           </TableWrap>
+         )}
+       </DataState>
++      <div className="mt-10">
++        <Ranking />
++      </div>
+     </>
+   )
+ }
+diff --git a/Front/src/pages/admin/Person.tsx b/Front/src/pages/admin/Person.tsx
+index dcca3bc..59c33bf 100644
+--- a/Front/src/pages/admin/Person.tsx
++++ b/Front/src/pages/admin/Person.tsx
+@@ -96,7 +96,7 @@ function PersonView({
+             {user.role === 'admin' ? 'Admin, ' : ''}
+             {user.department?.name ?? 'No department'}, {user.email}
+             <span
+-              className={`ml-3 inline-flex items-center gap-2 font-medium ${user.clocked_in ? 'text-done' : 'text-ink-soft'}`}
++              className={`ml-3 inline-flex items-center gap-2 font-medium ${user.clocked_in ? 'text-status-done' : 'text-ink-soft'}`}
+             >
+               {user.clocked_in && <LiveDot />}
+               {!user.is_active
+@@ -258,7 +258,7 @@ function HoursChart({ range, days }: { range: DayRange; days: { day: string; hou
+     <div role="img" aria-label={`Hours clocked per day, ${formatDay(range.from)} to ${formatDay(range.to)}`}>
+       <div className="relative h-40">
+         <div className="absolute inset-x-0 border-t border-dashed border-line-strong" style={{ bottom: `${(8 / max) * 100}%` }}>
+-          <span className="absolute -top-5 right-0 bg-paper pl-1 text-xs text-ink-faint">8h day</span>
++          <span className="absolute -top-5 right-0 bg-canvas pl-1 text-xs text-ink-faint">8h day</span>
+         </div>
+         <ol className="relative grid h-full items-end gap-[3px] border-b border-line-strong" style={columns}>
+           {all.map((day) => {
+@@ -267,7 +267,7 @@ function HoursChart({ range, days }: { range: DayRange; days: { day: string; hou
+               <li
+                 key={day}
+                 title={`${formatDay(day)}: ${formatHours(hours)}`}
+-                className="rounded-t-sm bg-stamp"
++                className="rounded-t-sm bg-primary"
+                 style={{ height: `${(hours / max) * 100}%` }}
+               />
+             )
+@@ -295,7 +295,7 @@ function Estimate({ task }: { task: DashboardTask }) {
+   const over = pct > 100
+   return (
+     <div className="grid gap-1.5">
+-      <span className={over ? 'font-medium text-over' : undefined}>
++      <span className={over ? 'font-medium text-danger' : undefined}>
+         {formatMinutes(task.actual_minutes)} of {formatMinutes(task.estimated_minutes)}
+       </span>
+       <Meter value={pct} over={over} label={`${Math.round(pct)}% of estimate`} />
+@@ -305,7 +305,7 @@ function Estimate({ task }: { task: DashboardTask }) {
+ 
+ function Stars({ rating }: { rating: number }) {
+   return (
+-    <span className="tracking-widest whitespace-nowrap text-rework" aria-label={`${rating} out of 5`}>
++    <span className="tracking-widest whitespace-nowrap text-status-rework" aria-label={`${rating} out of 5`}>
+       {'★'.repeat(rating)}
+       <span className="text-line-strong" aria-hidden="true">
+         {'★'.repeat(5 - rating)}
+diff --git a/Front/src/pages/admin/Projects.tsx b/Front/src/pages/admin/Projects.tsx
+index 8b8d8cf..41a5de5 100644
+--- a/Front/src/pages/admin/Projects.tsx
++++ b/Front/src/pages/admin/Projects.tsx
+@@ -59,7 +59,7 @@ export function Projects() {
+                         .filter((s) => p.tasks_by_status[s])
+                         .map((s) => `${taskStatusLabel[s]} ${p.tasks_by_status[s]}`)
+                         .join(', ')}
+-                      {p.tasks_overdue > 0 && <span className="font-medium text-over">, {p.tasks_overdue} overdue</span>}
++                      {p.tasks_overdue > 0 && <span className="font-medium text-danger">, {p.tasks_overdue} overdue</span>}
+                     </p>
+                   )}
+                   <a href={href('tasks', 'project', p.id)} className="text-sm">
+diff --git a/Front/src/pages/admin/Tasks.tsx b/Front/src/pages/admin/Tasks.tsx
+index 6de2df1..ed17831 100644
+--- a/Front/src/pages/admin/Tasks.tsx
++++ b/Front/src/pages/admin/Tasks.tsx
+@@ -17,9 +17,10 @@ import { useApi } from '../../lib/useApi'
+ import { getDashboardTasks, getPeople, getProjects, type TaskFilters } from '../../api/admin/dashboard'
+ import type { TaskStatus } from '../../api/types'
+ 
+-// Route params pre-fill the filters: #/tasks/overdue, #/tasks/project/3, #/tasks/person/6
++// Route params pre-fill the filters: #/tasks/overdue, #/tasks/status/todo, #/tasks/project/3, #/tasks/person/6
+ function filtersFromRoute(params: string[]): TaskFilters {
+   if (params[0] === 'overdue') return { overdue: true }
++  if (params[0] === 'status' && params[1]) return { status: params[1] as TaskStatus }
+   if (params[0] === 'project' && Number(params[1])) return { project_id: Number(params[1]) }
+   if (params[0] === 'person' && Number(params[1])) return { assigned_to: Number(params[1]) }
+   return {}
+@@ -124,7 +125,7 @@ export function Tasks({ params }: { params: string[] }) {
+                           {formatDate(t.deadline)}
+                           {t.overdue && <OverdueTag />}
+                         </td>
+-                        <td className={`num ${overEstimate ? 'font-medium text-over' : ''}`}>
++                        <td className={`num ${overEstimate ? 'font-medium text-danger' : ''}`}>
+                           {t.actual_minutes ? formatMinutes(t.actual_minutes) : '—'}
+                         </td>
+                         <td className="num">{formatMinutes(t.estimated_minutes)}</td>
+diff --git a/README.md b/README.md
+index 0796892..819bec1 100644
+--- a/README.md
++++ b/README.md
+@@ -82,3 +82,20 @@ Rules:
+ - Passwords are stored as bcrypt hashes and are never returned by the API.
+ 
+ `GET /api/admin/department` lists departments for the form's picker.
++
++## Design system
++
++The UI follows the Task Tracker design system: a navy app frame, brand blue `primary`, a fixed set of task status colours, IBM Plex Sans, and light and dark themes that follow the operating system. The colour tokens live in `Front/src/index.css` as Tailwind theme variables (`bg-surface`, `text-ink-soft`, `bg-status-review`, `bg-series-1` and so on). Use those tokens instead of raw colours.
++
++## Overview dashboard
++
++`GET /api/admin/dashboard/summary` returns everything the overview shows in one request. "This week" means the last 7 days in India time.
++
++- **People:** active team members, how many are clocked in now, and hours clocked today.
++- **Tasks:** not started (`todo`), pending (in progress, in review and rework), completed, overdue, completed this week and due this week.
++- **Projects:** status, progress, and tasks done of tasks assigned for each department.
++- **Departments:** members, who's working now, open, overdue and completed tasks, hours this week, time on task timers as a share of clocked hours, and average review rating.
++- **Needs attention:** tasks waiting for review, overdue tasks, and tasks due in the next 7 days.
++- **On the clock**, a 14-day **hours trend** by department, and the latest **activity** (status changes).
++
++The overview refreshes every 60 seconds while the tab is visible.
+-- 
+2.43.0
+

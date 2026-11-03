@@ -1,6 +1,6 @@
 const express = require("express");
 const requireAuth = require("../middleware/requireAuth");
-const requireRole = require("../middleware/requireRole");
+const requirePermission = require("../middleware/requirePermission");
 const authRoutes = require("./auth");
 const taskRoutes = require("./tasks");
 const adminRoutes = require("./admin");
@@ -10,8 +10,8 @@ const router = express.Router();
 
 router.use("/auth", authRoutes);
 router.use("/tasks", taskRoutes);
-router.use("/admin", requireAuth, requireRole("admin"), adminRoutes);
-router.use("/user", requireAuth, requireRole("user"), userRoutes);
+router.use("/admin", requireAuth, requirePermission("dashboard.view"), adminRoutes);
+router.use("/user", requireAuth, requirePermission("time.track"), userRoutes);
 
 router.use((req, res) => {
   res.status(404).json({ error: "Not found." });

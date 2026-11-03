@@ -8,7 +8,7 @@ const router = express.Router();
 router.get("/attendance", async (req, res) => {
   const range = dayRange(req.query);
   const [users, openSessions, hours] = await Promise.all([
-    run(supabase.from("users").select("id, name")),
+    run(supabase.from("users").select("id, name, department_id")),
     run(supabase.from("work_sessions").select("user_id, clock_in").is("clock_out", null).order("clock_in")),
     run(supabase
       .from("v_daily_hours")
@@ -18,16 +18,24 @@ router.get("/attendance", async (req, res) => {
       .order("day")),
   ]);
 
-  const nameById = new Map(users.data.map((user) => [user.id, user.name]));
+  const authUser = res.locals.authUser;
+  const visibleUsers = users.data.filter((user) =>
+    authUser.scope === "all" ||
+    (authUser.scope === "own" ? user.id === authUser.id : user.department_id === authUser.department_id),
+  );
+  const visibleUserIds = new Set(visibleUsers.map((user) => user.id));
+  const nameById = new Map(visibleUsers.map((user) => [user.id, user.name]));
+  const visibleSessions = openSessions.data.filter((session) => visibleUserIds.has(session.user_id));
+  const visibleHours = hours.data.filter((row) => visibleUserIds.has(row.user_id));
   res.json({
     range,
-    clocked_in_now: openSessions.data.map((session) => ({
+    clocked_in_now: visibleSessions.map((session) => ({
       user_id: session.user_id,
       name: nameById.get(session.user_id) ?? null,
       clock_in: session.clock_in,
       minutes_so_far: round(minutesBetween(session.clock_in), 0),
     })),
-    daily_hours: hours.data.map((row) => ({
+    daily_hours: visibleHours.map((row) => ({
       user_id: row.user_id,
       name: nameById.get(row.user_id) ?? null,
       day: row.day,

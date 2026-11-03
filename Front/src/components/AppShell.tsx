@@ -4,11 +4,11 @@ import type { User } from '../api/types'
 import { Button } from './ui'
 
 const nav = [
-  { key: '', label: 'Overview', icon: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z' },
-  { key: 'people', label: 'People', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' },
-  { key: 'projects', label: 'Projects', icon: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
-  { key: 'tasks', label: 'Tasks', icon: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9' },
-  { key: 'attendance', label: 'Attendance', icon: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0' },
+  { key: '', label: 'Overview', permission: 'dashboard.view', icon: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z' },
+  { key: 'people', label: 'People', permission: 'people.view', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75' },
+  { key: 'projects', label: 'Projects', permission: 'dashboard.view', icon: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
+  { key: 'tasks', label: 'Tasks', permission: 'dashboard.view', icon: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9' },
+  { key: 'attendance', label: 'Attendance', permission: 'dashboard.view', icon: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0' },
 ]
 
 function NavIcon({ d }: { d: string }) {
@@ -52,7 +52,7 @@ export function AppShell({
         </div>
         <nav aria-label="Admin" className="overflow-x-auto px-2 lg:mt-8 lg:px-3">
           <ul className="flex gap-1 py-2 lg:flex-col lg:py-0">
-            {nav.map((item) => (
+            {nav.filter((item) => user.permissions.includes(item.permission)).map((item) => (
               <li key={item.key}>
                 <a
                   href={href(item.key)}
@@ -76,7 +76,7 @@ export function AppShell({
             </span>
             <span>
               <strong className="block text-sm font-medium">{user.name}</strong>
-              <span className="text-xs text-chrome-muted">Admin</span>
+              <span className="text-xs text-chrome-muted">{user.role_name}</span>
             </span>
           </p>
           <Button variant="onDark" onClick={onSignOut} disabled={signingOut}>

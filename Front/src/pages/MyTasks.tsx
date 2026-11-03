@@ -50,6 +50,9 @@ export function MyTasks({ user, onSignOut, signingOut }: { user: User; onSignOut
                           <h2 className="text-lg font-semibold">{t.name}</h2>
                           {t.description && <p className="mt-1 max-w-[65ch]">{t.description}</p>}
                           <p className="mt-1 text-sm text-ink-soft">{t.project?.name ?? 'No project'}</p>
+                          <p className="mt-1 text-xs text-ink-faint">
+                            {t.number ? `#${t.number} · ` : ''}{t.priority} priority
+                          </p>
                         </div>
                         <div className="flex flex-col items-start gap-1 text-sm sm:items-end">
                           <TaskStatusPill status={t.status} />

@@ -1,5 +1,5 @@
 import { query, request } from '../client'
-import type { Role, TaskStatus } from '../types'
+import type { Role, TaskPriority, TaskStatus } from '../types'
 
 export type ProjectStatus = 'planned' | 'active' | 'completed' | 'on_hold'
 export type DayRange = { from: string; to: string }
@@ -18,6 +18,10 @@ export type UserSummary = {
   name: string
   email: string
   role: Role
+  role_name: string
+  role_id: number
+  scope: 'all' | 'department' | 'own'
+  title: string | null
   is_active: boolean
   department: Ref | null
   tasks_done: number
@@ -37,9 +41,11 @@ export type RankedUser = UserSummary & { rank: number | null }
 
 export type DashboardTask = {
   id: number
+  number?: number
   name: string
   description?: string | null
   status: TaskStatus
+  priority: TaskPriority
   deadline: string | null
   estimated_minutes: number | null
   created_at: string
@@ -58,7 +64,7 @@ export type PersonDetail = {
   daily_hours: { day: string; hours_clocked: number }[]
   recent_sessions: { id: number; clock_in: string; clock_out: string | null; minutes: number }[]
   recent_time_logs: { id: number; started_at: string; ended_at: string | null; minutes: number; task: Ref | null }[]
-  recent_reviews: { id: number; rating: number; needed_rework: boolean; comments: string | null; reviewed_at: string; task: Ref }[]
+  recent_reviews: { id: number; rating: number | null; needed_rework: boolean; comments: string | null; reviewed_at: string; task: Ref | null }[]
 }
 
 export type ProjectSummary = {
@@ -127,8 +133,10 @@ export function getAttendance(range: DayRange) {
 
 export type AttentionTask = {
   id: number
+  number: number
   name: string
   status: TaskStatus
+  priority: TaskPriority
   deadline: string | null
   overdue: boolean
   project: Ref | null

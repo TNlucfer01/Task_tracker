@@ -264,7 +264,9 @@ function AttentionRow({ task, now }: { task: AttentionTask; now: number }) {
     <li className="grid gap-x-4 gap-y-1 border-b border-line px-5 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_120px_170px] sm:items-center">
       <div className="min-w-0">
         <p className="truncate font-medium">{task.name}</p>
-        <p className="truncate text-xs text-ink-faint">{task.project?.name ?? 'No project'}</p>
+        <p className="truncate text-xs text-ink-faint">
+          {task.number ? `#${task.number} · ` : ''}{task.priority} priority · {task.project?.name ?? 'No project'}
+        </p>
       </div>
       <p className="text-sm">
         {task.assignee ? (

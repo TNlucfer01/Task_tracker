@@ -11,25 +11,24 @@ router.get("/users", async (req, res) => {
     throw new HttpError(400, "role must be user, admin or all.");
   }
   const range = dayRange(req.query);
-  const users = await buildUserSummaries({ role, ...range });
+  const users = await buildUserSummaries({ role, authUser: res.locals.authUser, ...range });
   res.json({ range, users });
 });
 
 router.get("/users/:id", async (req, res) => {
   const userId = parseId(req.params.id, "user id");
   const range = dayRange(req.query);
-  const [summary] = await buildUserSummaries({ role: "all", userId, ...range });
+  const [summary] = await buildUserSummaries({ role: "all", userId, authUser: res.locals.authUser, ...range });
   if (!summary) {
     throw new HttpError(404, "User not found.");
   }
 
-  const [tasks, estimates, dailyHours, sessions, timeLogs, reviews] = await Promise.all([
+  const [tasks, dailyHours, sessions, timeLogs, reviews] = await Promise.all([
     run(supabase
       .from("tasks")
-      .select("id, name, status, deadline, estimated_minutes, created_at, completed_at, project:projects(id, name)")
-      .eq("assigned_to", userId)
+      .select("id, number, name:title, status, priority, deadline, estimated_minutes:estimate_minutes, created_at, completed_at, project:projects(id, name)")
+      .eq("assignee_id", userId)
       .order("created_at", { ascending: false })),
-    run(supabase.from("v_task_actual_vs_estimate").select("task_id, estimated_minutes, actual_minutes").eq("assigned_to", userId)),
     run(supabase
       .from("v_daily_hours")
       .select("day, hours_clocked")
@@ -45,19 +44,23 @@ router.get("/users/:id", async (req, res) => {
       .limit(20)),
     run(supabase
       .from("task_time_logs")
-      .select("id, started_at, ended_at, task:tasks(id, name)")
+      .select("id, started_at, ended_at, task:tasks(id, name:title)")
       .eq("user_id", userId)
       .order("started_at", { ascending: false })
       .limit(20)),
     run(supabase
       .from("task_reviews")
-      .select("id, rating, needed_rework, comments, reviewed_at, task:tasks!inner(id, name, assigned_to)")
-      .eq("task.assigned_to", userId)
-      .order("reviewed_at", { ascending: false })
+      .select("id, rating, decision, comment, created_at, task:tasks!task_reviews_task_id_fkey(id, name:title)")
+      .eq("assignee_id", userId)
+      .order("created_at", { ascending: false })
       .limit(20)),
   ]);
 
-  const actualByTask = indexBy(estimates.data, "task_id");
+  const taskIds = tasks.data.map((task) => task.id);
+  const actual = taskIds.length
+    ? await run(supabase.from("v_task_time").select("task_id, actual_minutes").in("task_id", taskIds))
+    : { data: [] };
+  const actualByTask = indexBy(actual.data, "task_id");
   const now = Date.now();
   res.json({
     range,
@@ -70,7 +73,13 @@ router.get("/users/:id", async (req, res) => {
     daily_hours: dailyHours.data.map((row) => ({ day: row.day, hours_clocked: Number(row.hours_clocked) })),
     recent_sessions: sessions.data.map((session) => ({ ...session, minutes: round(minutesBetween(session.clock_in, session.clock_out), 0) })),
     recent_time_logs: timeLogs.data.map((log) => ({ ...log, minutes: round(minutesBetween(log.started_at, log.ended_at), 0) })),
-    recent_reviews: reviews.data.map(({ task, ...review }) => ({ ...review, task: { id: task.id, name: task.name } })),
+    recent_reviews: reviews.data.map(({ task, decision, comment, created_at, ...review }) => ({
+      ...review,
+      needed_rework: decision === "changes_requested",
+      comments: comment,
+      reviewed_at: created_at,
+      task: task ? { id: task.id, name: task.name } : null,
+    })),
   });
 });
 
@@ -80,7 +89,7 @@ router.get("/rank", async (req, res) => {
     throw new HttpError(400, `by must be one of: ${Object.keys(RANK_METRICS).join(", ")}.`);
   }
   const range = dayRange(req.query);
-  const users = await buildUserSummaries({ role: "user", ...range });
+  const users = await buildUserSummaries({ role: "user", authUser: res.locals.authUser, ...range });
   const direction = RANK_METRICS[by] === "asc" ? 1 : -1;
   const ranked = users
     .filter((user) => user.is_active)
