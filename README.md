@@ -13,13 +13,16 @@
    npm run dev    # or: npm start
    ```
 
-4. In another terminal, start the frontend:
+4. In another terminal, start the frontend. It uses Tailwind CSS v4 through its Vite plugin:
 
    ```powershell
    cd Front
    npm install
+   npm install tailwindcss @tailwindcss/vite
    npm run dev
    ```
+
+   Admins land on the team dashboard; everyone else sees their own tasks.
 
 ## Custom login
 

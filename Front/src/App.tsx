@@ -1,194 +1,110 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import {
-  ApiError,
-  getCurrentUser,
-  getTasks,
-  login,
-  logout,
-  type Task,
-  type User,
-} from './utils/api'
-import './App.css'
+import { useEffect, useState } from 'react'
+import { AppShell } from './components/AppShell'
+import { useRoute } from './lib/router'
+import { Login } from './pages/Login'
+import { MyTasks } from './pages/MyTasks'
+import { Attendance } from './pages/admin/Attendance'
+import { Overview } from './pages/admin/Overview'
+import { People } from './pages/admin/People'
+import { Person } from './pages/admin/Person'
+import { Projects } from './pages/admin/Projects'
+import { Tasks } from './pages/admin/Tasks'
+import { ApiError, getCurrentUser, logout, type User } from './utils/api'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [identifier, setIdentifier] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [checking, setChecking] = useState(true)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
 
   useEffect(() => {
-    let isCurrent = true
-
-    async function restoreSession() {
-      try {
-        const { user: currentUser } = await getCurrentUser()
-
-        if (!isCurrent) {
-          return
+    let current = true
+    getCurrentUser()
+      .then(({ user }) => current && setUser(user))
+      .catch((error: unknown) => {
+        if (current && !(error instanceof ApiError && error.status === 401)) {
+          setSessionError(error instanceof Error ? error.message : 'Unable to connect to the server.')
         }
-
-        setUser(currentUser)
-        const { tasks: assignedTasks } = await getTasks()
-
-        if (isCurrent) {
-          setTasks(assignedTasks)
-        }
-      } catch (sessionError) {
-        if (isCurrent && !(sessionError instanceof ApiError && sessionError.status === 401)) {
-          setError(
-            sessionError instanceof Error
-              ? sessionError.message
-              : 'Unable to connect to the server.',
-          )
-        }
-      } finally {
-        if (isCurrent) {
-          setLoading(false)
-        }
-      }
-    }
-
-    void restoreSession()
-
+      })
+      .finally(() => current && setChecking(false))
     return () => {
-      isCurrent = false
+      current = false
     }
   }, [])
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setSubmitting(true)
-    setError(null)
-
-    try {
-      const { user: signedInUser } = await login(identifier, password)
-      setUser(signedInUser)
-      setPassword('')
-      const { tasks: assignedTasks } = await getTasks()
-      setTasks(assignedTasks)
-    } catch (loginError) {
-      setError(
-        loginError instanceof Error
-          ? loginError.message
-          : 'Unable to sign in. Please try again.',
-      )
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  async function handleLogout() {
-    setSubmitting(true)
-    setError(null)
-
+  async function handleSignOut() {
+    setSigningOut(true)
     try {
       await logout()
-      setUser(null)
-      setTasks([])
-      setPassword('')
-    } catch (logoutError) {
-      setError(
-        logoutError instanceof Error
-          ? logoutError.message
-          : 'Unable to sign out. Please try again.',
-      )
     } finally {
-      setSubmitting(false)
+      setSigningOut(false)
+      setUser(null)
+      window.location.hash = ''
     }
   }
 
-  if (loading) {
+  if (checking) {
     return (
-      <main className="page-shell">
-        <p className="status-message" role="status">Checking your session...</p>
-      </main>
+      <p className="grid min-h-screen place-items-center text-ink-soft" role="status">
+        Checking your session…
+      </p>
     )
   }
 
   if (!user) {
     return (
-      <main className="page-shell">
-        <section className="auth-card" aria-labelledby="login-title">
-          <div className="brand-mark" aria-hidden="true">T</div>
-          <p className="eyebrow">TASK TRACKER</p>
-          <h1 id="login-title">Welcome back</h1>
-          <p className="card-description">Sign in to see the tasks assigned to you.</p>
-
-          <form className="login-form" onSubmit={handleLogin}>
-            <label htmlFor="identifier">Username or email</label>
-            <input
-              id="identifier"
-              name="identifier"
-              type="text"
-              autoComplete="username"
-              value={identifier}
-              onChange={(event) => setIdentifier(event.target.value)}
-              placeholder="Your username or email"
-              required
-              maxLength={320}
-            />
-
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Your password"
-              required
-              maxLength={1024}
-            />
-
-            {error && <p className="error-message" role="alert">{error}</p>}
-
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
-        </section>
-      </main>
+      <>
+        {sessionError && (
+          <p className="bg-over-tint px-4 py-2.5 text-center text-sm text-over" role="alert">
+            {sessionError}
+          </p>
+        )}
+        <Login onSignedIn={setUser} />
+      </>
     )
   }
 
+  if (user.role !== 'admin') {
+    return <MyTasks user={user} onSignOut={handleSignOut} signingOut={signingOut} />
+  }
+
+  return <AdminApp user={user} onSignOut={handleSignOut} signingOut={signingOut} />
+}
+
+function AdminApp({ user, onSignOut, signingOut }: { user: User; onSignOut: () => void; signingOut: boolean }) {
+  const [section = '', ...params] = useRoute()
+
+  let page
+  switch (section) {
+    case '':
+      page = <Overview />
+      break
+    case 'people':
+      page = params[0] && Number(params[0]) ? <Person key={params[0]} id={Number(params[0])} /> : <People />
+      break
+    case 'projects':
+      page = <Projects />
+      break
+    case 'tasks':
+      page = <Tasks key={params.join('/')} params={params} />
+      break
+    case 'attendance':
+      page = <Attendance />
+      break
+    default:
+      page = (
+        <div className="py-10">
+          <h1 className="text-[34px] font-bold tracking-tight">Page not found</h1>
+          <p className="mt-2 text-ink-soft">
+            This page doesn't exist. <a href="#/">Go to the overview</a>
+          </p>
+        </div>
+      )
+  }
+
   return (
-    <main className="page-shell">
-      <section className="task-panel" aria-labelledby="tasks-title">
-        <header className="dashboard-header">
-          <div>
-            <p className="eyebrow">TASK TRACKER</p>
-            <h1 id="tasks-title">Your tasks</h1>
-            <p className="card-description">Signed in as {user.name} · {user.email}</p>
-          </div>
-          <button
-            className="sign-out-button"
-            type="button"
-            onClick={handleLogout}
-            disabled={submitting}
-          >
-            {submitting ? 'Please wait...' : 'Sign out'}
-          </button>
-        </header>
-
-        {error && <p className="error-message" role="alert">{error}</p>}
-
-        {tasks.length === 0 ? (
-          <p className="empty-state">There are no tasks assigned to you yet.</p>
-        ) : (
-          <ul className="task-list">
-            {tasks.map((task) => (
-              <li className="task-card" key={task.id}>
-                <h2>{task.name}</h2>
-                {task.description && <p>{task.description}</p>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
+    <AppShell user={user} section={section} onSignOut={onSignOut} signingOut={signingOut}>
+      {page}
+    </AppShell>
   )
 }
