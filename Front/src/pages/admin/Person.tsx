@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
+import { UserDialog } from '../../components/UserDialog'
 import {
+  Button,
   DataState,
   LiveDot,
   Meter,
@@ -10,6 +12,7 @@ import {
   Section,
   SectionHead,
   Sub,
+  SuccessNotice,
   TableWrap,
   Tally,
   TaskStatusPill,
@@ -26,33 +29,71 @@ import {
   formatTime,
   lastDays,
 } from '../../lib/format'
+import { setFlash } from '../../lib/flash'
 import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
 import { getPerson, type DashboardTask, type DayRange, type PersonDetail } from '../../utils/api'
 
-export function Person({ id }: { id: number }) {
+export function Person({ id, myId }: { id: number; myId: number }) {
   const [range, setRange] = useState<DayRange>(() => lastDays(30))
   const person = useApi(() => getPerson(id, range), `person-${id}-${range.from}-${range.to}`)
+  const [editing, setEditing] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   return (
     <>
       <a href={href('people')} className="mb-4 inline-block text-sm">
         Back to people
       </a>
-      <DataState state={person}>{(data) => <PersonView data={data} range={range} onRange={setRange} />}</DataState>
+      {notice && <SuccessNotice message={notice} onDismiss={() => setNotice(null)} />}
+      <DataState state={person}>
+        {(data) => (
+          <>
+            <PersonView data={data} range={range} onRange={setRange} onEdit={() => setEditing(true)} />
+            {editing && (
+              <UserDialog
+                user={data.user}
+                isSelf={data.user.id === myId}
+                onClose={() => setEditing(false)}
+                onSaved={(_, message) => {
+                  setEditing(false)
+                  setNotice(message)
+                  person.reload()
+                }}
+                onDeleted={(name) => {
+                  setFlash(`${name} was deleted.`)
+                  window.location.hash = href('people')
+                }}
+              />
+            )}
+          </>
+        )}
+      </DataState>
     </>
   )
 }
 
-function PersonView({ data, range, onRange }: { data: PersonDetail; range: DayRange; onRange: (r: DayRange) => void }) {
+function PersonView({
+  data,
+  range,
+  onRange,
+  onEdit,
+}: {
+  data: PersonDetail
+  range: DayRange
+  onRange: (r: DayRange) => void
+  onEdit: () => void
+}) {
   const { user } = data
 
   return (
     <>
       <PageHeader
         title={user.name}
+        actions={<Button onClick={onEdit}>Edit details</Button>}
         lede={
           <>
+            {user.role === 'admin' ? 'Admin, ' : ''}
             {user.department?.name ?? 'No department'}, {user.email}
             <span
               className={`ml-3 inline-flex items-center gap-2 font-medium ${user.clocked_in ? 'text-done' : 'text-ink-soft'}`}

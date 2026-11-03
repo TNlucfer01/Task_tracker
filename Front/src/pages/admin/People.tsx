@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Check, DataState, LiveDot, PageHeader, RangePicker, Sub, TableWrap, Toolbar } from '../../components/ui'
+import { UserDialog } from '../../components/UserDialog'
+import { Button, Check, DataState, LiveDot, PageHeader, RangePicker, Sub, SuccessNotice, TableWrap, Toolbar } from '../../components/ui'
+import { takeFlash } from '../../lib/flash'
 import { formatHours, formatPct, formatRating, lastDays } from '../../lib/format'
 import { href } from '../../lib/router'
 import { useApi } from '../../lib/useApi'
@@ -9,19 +11,39 @@ export function People() {
   const [range, setRange] = useState<DayRange>(() => lastDays(30))
   const [showAll, setShowAll] = useState(false)
   const people = useApi(() => getPeople(range, showAll ? 'all' : 'user'), `people-${range.from}-${range.to}-${showAll}`)
+  const [adding, setAdding] = useState(false)
+  const [notice, setNotice] = useState<string | null>(takeFlash)
 
   return (
     <>
       <PageHeader
         title="People"
         lede="Hours clocked use the selected dates. Task counts, on-time rate and ratings cover all time."
+        actions={
+          <Button variant="primary" onClick={() => setAdding(true)}>
+            Add person
+          </Button>
+        }
       />
+      {notice && <SuccessNotice message={notice} onDismiss={() => setNotice(null)} />}
+      {adding && (
+        <UserDialog
+          onClose={() => setAdding(false)}
+          onSaved={(user, message) => {
+            setAdding(false)
+            setNotice(message)
+            // New admins are hidden by the default filter, so show them.
+            if (user.role === 'admin') setShowAll(true)
+            people.reload()
+          }}
+        />
+      )}
       <Toolbar>
         <RangePicker value={range} onChange={setRange} />
         <Check label="Include admins" checked={showAll} onChange={setShowAll} />
       </Toolbar>
 
-      <DataState state={people} isEmpty={(d) => d.users.length === 0} empty="No people yet.">
+      <DataState state={people} isEmpty={(d) => d.users.length === 0} empty="No people yet. Add your first team member to start tracking their work.">
         {(data) => (
           <TableWrap>
             <table className="data-table min-w-[820px]">
@@ -43,7 +65,10 @@ export function People() {
                   <tr key={u.id} className={u.is_active ? 'hover:bg-panel' : 'text-ink-faint'}>
                     <th scope="row">
                       <a href={href('people', u.id)}>{u.name}</a>
-                      <Sub>{u.department?.name ?? 'No department'}</Sub>
+                      <Sub>
+                        {u.role === 'admin' ? 'Admin, ' : ''}
+                        {u.department?.name ?? 'No department'}
+                      </Sub>
                     </th>
                     <td>
                       {!u.is_active ? (

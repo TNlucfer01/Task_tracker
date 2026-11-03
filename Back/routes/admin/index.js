@@ -6,7 +6,7 @@ const taskRoutes = require("./tasks");
 const departmentRoutes = require("./department");
 const dashboardRoutes = require("./dashboard");
 
-router.use("/user", userRoutes);
+router.use("/users", userRoutes);
 router.use("/project", projectRoutes);
 router.use("/tasks", taskRoutes);
 router.use("/department", departmentRoutes);

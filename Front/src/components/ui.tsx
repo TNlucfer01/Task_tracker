@@ -8,6 +8,8 @@ const buttonStyles = {
   primary: 'bg-stamp text-white hover:bg-stamp-deep min-h-11 px-5',
   quiet: 'border border-line-strong bg-panel text-ink hover:bg-paper min-h-9 px-3.5',
   onDark: 'border border-white/30 text-white hover:bg-white/10 min-h-9 px-3.5',
+  danger: 'bg-over text-white hover:bg-over/90 min-h-9 px-3.5',
+  dangerQuiet: 'border border-over/40 bg-panel text-over hover:bg-over-tint min-h-9 px-3.5',
 }
 
 export function Button({
@@ -272,5 +274,20 @@ export function Tally({ items }: { items: { label: string; value: ReactNode; ale
         </div>
       ))}
     </dl>
+  )
+}
+
+// Confirms something the admin just did. Dismissible; announced to screen readers.
+export function SuccessNotice({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div
+      role="status"
+      className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-done/30 bg-done/8 px-4 py-3 text-done"
+    >
+      <p>{message}</p>
+      <button type="button" onClick={onDismiss} className="cursor-pointer text-sm font-medium underline underline-offset-3">
+        Dismiss
+      </button>
+    </div>
   )
 }

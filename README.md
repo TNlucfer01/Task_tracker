@@ -53,3 +53,24 @@ All routes are `GET`, admin only, and under `/api/admin/dashboard`. `from` and `
 | `/tasks?status&project_id&assigned_to&overdue=true&limit` | Tasks with project, assignee and actual minutes (default limit 100, max 500) |
 | `/rank?by=tasks_done\|on_time_pct\|avg_rating\|hours_clocked\|rework_bounces&from&to` | Active users ordered by one metric; users with no data for it are listed last with `rank: null` |
 | `/attendance?from&to` | Who is clocked in now, and hours per user per day |
+
+## Managing users (admin)
+
+In the dashboard, use **Add person** on the People page, or **Edit details** on a person's page. The API is under `/api/admin/users`, admin only:
+
+| Method and route | Does |
+| --- | --- |
+| `GET /` | List users (`?role=admin\|user`, `?active=true\|false`) |
+| `GET /:id` | One user |
+| `POST /` | Create `{ name, email, password, role?, department_id? }` |
+| `PATCH /:id` | Change any of `name`, `email`, `role`, `department_id`, `is_active`, `password` |
+| `DELETE /:id` | Permanently delete a user with no history |
+
+Rules:
+
+- Names are also usernames, so they must be unique (ignoring case) and can't contain `@`. Emails are unique, and passwords are 8 to 128 characters.
+- People with tasks, hours or reviews can't be deleted, because that would erase their history. Deactivate them instead (`is_active: false`): they can't sign in, and everything they did is kept.
+- Admins can't change their own role, deactivate themselves or delete themselves, so you can't lock yourself out.
+- Passwords are stored as bcrypt hashes and are never returned by the API.
+
+`GET /api/admin/department` lists departments for the form's picker.

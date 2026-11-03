@@ -80,7 +80,7 @@ function AdminApp({ user, onSignOut, signingOut }: { user: User; onSignOut: () =
       page = <Overview />
       break
     case 'people':
-      page = params[0] && Number(params[0]) ? <Person key={params[0]} id={Number(params[0])} /> : <People />
+      page = params[0] && Number(params[0]) ? <Person key={params[0]} id={Number(params[0])} myId={user.id} /> : <People />
       break
     case 'projects':
       page = <Projects />
