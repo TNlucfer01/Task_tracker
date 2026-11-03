@@ -7,6 +7,12 @@ const requireAuth = require("../middleware/requireAuth");
 const { jwtSecret, jwtOptions } = require("../config/auth");
 
 const router = express.Router();
+const USER_COLUMNS = "id, name, email, role, department_id, is_active, password_hash";
+
+// Escape LIKE wildcards so the case-insensitive email match is an exact match.
+function escapeLike(value) {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
 const sessionDurationMs = 8 * 60 * 60 * 1000;
 const cookieOptions = {
   httpOnly: true,
@@ -43,8 +49,8 @@ router.post("/login", loginRateLimit, async (req, res) => {
   try {
     const emailResult = await supabase
       .from("users")
-      .select("id, name, email, password_hash")
-      .eq("email", login.toLowerCase())
+      .select(USER_COLUMNS)
+      .ilike("email", escapeLike(login))
       .maybeSingle();
 
     if (emailResult.error) {
@@ -56,7 +62,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
     if (!user) {
       const nameResult = await supabase
         .from("users")
-        .select("id, name, email, password_hash")
+        .select(USER_COLUMNS)
         .eq("name", login)
         .maybeSingle();
 
@@ -87,8 +93,12 @@ router.post("/login", loginRateLimit, async (req, res) => {
     return res.status(401).json({ error: "Invalid username/email or password." });
   }
 
+  if (!user.is_active) {
+    return res.status(403).json({ error: "This account has been deactivated. Contact your admin." });
+  }
+
   const token = jwt.sign(
-    { name: user.name, email: user.email },
+    { name: user.name, email: user.email, role: user.role },
     jwtSecret,
     {
       algorithm: "HS256",
@@ -108,6 +118,8 @@ router.post("/login", loginRateLimit, async (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role,
+      department_id: user.department_id,
     },
   });
 });

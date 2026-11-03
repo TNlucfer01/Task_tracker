@@ -1,18 +1,29 @@
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
+export type Role = 'admin' | 'user'
+
 export type User = {
-  id: string | number
+  id: number
   name: string
   email: string
+  role: Role
+  department_id: number | null
 }
 
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'rework'
+
 export type Task = {
-  id: string | number
+  id: number
   name: string
   description: string | null
-  project_id: string | number | null
-  user_assigned_id: string | number
+  status: TaskStatus
+  deadline: string | null
+  estimated_minutes: number | null
   created_at: string
+  completed_at: string | null
+  project_id: number
+  assigned_to: number | null
+  project: { id: number; name: string } | null
 }
 
 export class ApiError extends Error {

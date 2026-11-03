@@ -9,8 +9,8 @@ router.get("/", requireAuth, async (req, res) => {
     const { id } = res.locals.authUser;
     const { data, error } = await supabase
       .from("tasks")
-      .select("id, name, description, project_id, user_assigned_id:user_assigened_id, created_at")
-      .eq("user_assigened_id", id)
+      .select("id, name, description, status, deadline, estimated_minutes, created_at, completed_at, project_id, assigned_to, project:projects(id, name)")
+      .eq("assigned_to", id)
       .order("created_at", { ascending: false });
 
     if (error) {
