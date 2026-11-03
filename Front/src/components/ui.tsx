@@ -6,11 +6,11 @@ import type { TaskStatus } from '../api/types'
 
 
 const buttonStyles = {
-  primary: 'bg-stamp text-white hover:bg-stamp-deep min-h-11 px-5',
-  quiet: 'border border-line-strong bg-panel text-ink hover:bg-paper min-h-9 px-3.5',
-  onDark: 'border border-white/30 text-white hover:bg-white/10 min-h-9 px-3.5',
-  danger: 'bg-over text-white hover:bg-over/90 min-h-9 px-3.5',
-  dangerQuiet: 'border border-over/40 bg-panel text-over hover:bg-over-tint min-h-9 px-3.5',
+  primary: 'bg-primary text-on-primary hover:bg-primary-strong min-h-9 px-4',
+  quiet: 'border border-line-strong bg-surface text-ink hover:bg-canvas min-h-9 px-3.5',
+  onDark: 'border border-chrome-muted/50 text-chrome-ink hover:bg-white/10 min-h-9 px-3.5',
+  danger: 'bg-danger text-on-primary hover:bg-danger/90 min-h-9 px-3.5',
+  dangerQuiet: 'border border-danger/40 bg-surface text-danger hover:bg-danger-tint min-h-9 px-3.5',
 }
 
 export function Button({
@@ -31,7 +31,7 @@ export function PageHeader({ title, lede, actions }: { title: string; lede?: Rea
   return (
     <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-[34px] leading-tight font-bold tracking-tight">{title}</h1>
+        <h1 className="text-[26px] leading-8 font-semibold tracking-tight">{title}</h1>
         {lede && <p className="mt-1.5 max-w-[65ch] text-ink-soft">{lede}</p>}
       </div>
       {actions}
@@ -42,7 +42,7 @@ export function PageHeader({ title, lede, actions }: { title: string; lede?: Rea
 export function SectionHead({ id, title, children }: { id: string; title: string; children?: ReactNode }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-      <h2 id={id} className="text-xl font-semibold">
+      <h2 id={id} className="text-[17px] leading-6 font-semibold">
         {title}
       </h2>
       {children}
@@ -78,7 +78,7 @@ export function ProjectStatusPill({ status }: { status: ProjectStatus }) {
 
 export function OverdueTag() {
   return (
-    <span className="ml-1 inline-block rounded-sm bg-over-tint px-1.5 py-px text-xs font-semibold whitespace-nowrap text-over">
+    <span className="ml-1 inline-block rounded-sm bg-danger-tint px-1.5 py-px text-xs font-semibold whitespace-nowrap text-danger">
       Overdue
     </span>
   )
@@ -87,7 +87,7 @@ export function OverdueTag() {
 export function LiveDot({ light = false }: { light?: boolean }) {
   return (
     <i
-      className={`inline-block size-2 shrink-0 animate-live rounded-full ${light ? 'bg-white' : 'bg-done'}`}
+      className={`inline-block size-2 shrink-0 animate-live rounded-full ${light ? 'bg-chrome-ink' : 'bg-success'}`}
       aria-hidden="true"
     />
   )
@@ -102,7 +102,7 @@ export function Sub({ children }: { children: ReactNode }) {
 }
 
 export function TableWrap({ children }: { children: ReactNode }) {
-  return <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">{children}</div>
+  return <div className="overflow-x-auto rounded-lg border border-line bg-surface">{children}</div>
 }
 
 // Loading / error / empty handling, so each page only describes its happy path.
@@ -120,7 +120,7 @@ export function DataState<T>({
   if (state.error) {
     return (
       <div
-        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-over/30 bg-over-tint px-4 py-3 text-over"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger-tint px-4 py-3 text-danger"
         role="alert"
       >
         <p>{state.error}</p>
@@ -153,14 +153,14 @@ export function Segmented<T extends string | number>({
   onChange: (value: T) => void
 }) {
   return (
-    <div className="inline-flex flex-wrap rounded-md border border-line-strong bg-panel p-0.5" role="group" aria-label={label}>
+    <div className="inline-flex flex-wrap rounded-md border border-line-strong bg-surface p-0.5" role="group" aria-label={label}>
       {options.map((o) => (
         <button
           key={String(o.value)}
           type="button"
           aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
-          className="cursor-pointer rounded px-3 py-1.5 text-sm text-ink-soft hover:text-ink aria-pressed:bg-ink aria-pressed:text-white"
+          className="cursor-pointer rounded px-3 py-1.5 text-sm text-ink-soft hover:text-ink aria-pressed:bg-primary aria-pressed:text-on-primary"
         >
           {o.label}
         </button>
@@ -176,7 +176,7 @@ const presets = [
 ]
 
 const fieldClass =
-  'min-h-9 rounded-md border border-line-strong bg-panel px-2.5 text-sm text-ink focus:border-stamp focus:outline-none'
+  'min-h-9 rounded-md border border-line-strong bg-surface px-2.5 text-sm text-ink focus:border-primary focus:outline-none'
 
 export function RangePicker({ value, onChange }: { value: DayRange; onChange: (range: DayRange) => void }) {
   const active = presets.find((p) => {
@@ -237,7 +237,7 @@ export function Check({ label, checked, onChange }: { label: string; checked: bo
     <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
       <input
         type="checkbox"
-        className="size-4 accent-stamp"
+        className="size-4 accent-primary"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />
@@ -255,21 +255,21 @@ export function Meter({ value, label, over = false }: { value: number; label: st
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-line" role="img" aria-label={label}>
       <span
-        className={`block h-full rounded-full ${over ? 'bg-over' : 'bg-stamp'}`}
+        className={`block h-full rounded-full ${over ? 'bg-danger' : 'bg-primary'}`}
         style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
       />
     </div>
   )
 }
 
-// A row of headline numbers. `alert` marks one in stamp red.
+// A row of headline numbers in one bordered strip (design system: KpiStrip). `alert` marks one in danger.
 export function Tally({ items }: { items: { label: string; value: ReactNode; alert?: boolean }[] }) {
   return (
-    <dl className="mb-10 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(130px,1fr))]">
+    <dl className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
       {items.map((item) => (
-        <div key={item.label} className={`border-l-2 pl-3 ${item.alert ? 'border-over' : 'border-line-strong'}`}>
-          <dt className="text-sm text-ink-soft">{item.label}</dt>
-          <dd className={`font-display text-[28px] leading-tight font-semibold ${item.alert ? 'text-over' : ''}`}>
+        <div key={item.label} className="bg-surface px-5 py-4">
+          <dt className="text-[13px] font-medium text-ink-soft">{item.label}</dt>
+          <dd className={`mt-0.5 text-[26px] leading-8 font-semibold tracking-tight ${item.alert ? 'text-danger' : ''}`}>
             {item.value}
           </dd>
         </div>
@@ -283,7 +283,7 @@ export function SuccessNotice({ message, onDismiss }: { message: string; onDismi
   return (
     <div
       role="status"
-      className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-done/30 bg-done/8 px-4 py-3 text-done"
+      className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-status-done/30 bg-status-done/8 px-4 py-3 text-status-done"
     >
       <p>{message}</p>
       <button type="button" onClick={onDismiss} className="cursor-pointer text-sm font-medium underline underline-offset-3">

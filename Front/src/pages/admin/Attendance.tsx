@@ -7,14 +7,14 @@ import { getAttendance, getPeople, type DayRange } from '../../api/admin/dashboa
 
 // Timesheet shading. An 8-hour day lands in the third band.
 const shades = [
-  { min: 9, cell: 'bg-shade-4 text-white', label: 'Over 9h' },
-  { min: 7, cell: 'bg-shade-3 text-white', label: '7–9h' },
+  { min: 9, cell: 'bg-shade-4 text-on-primary', label: 'Over 9h' },
+  { min: 7, cell: 'bg-shade-3 text-on-primary', label: '7–9h' },
   { min: 4, cell: 'bg-shade-2 text-ink', label: '4–7h' },
   { min: 0.01, cell: 'bg-shade-1 text-ink', label: 'Under 4h' },
 ]
 
 function cellClass(hours: number) {
-  return shades.find((s) => hours >= s.min)?.cell ?? 'bg-panel'
+  return shades.find((s) => hours >= s.min)?.cell ?? 'bg-surface'
 }
 
 export function Attendance() {
@@ -76,11 +76,11 @@ export function Attendance() {
               return <Muted>{people.loading ? 'Loading people…' : 'No people to show yet.'}</Muted>
             }
             return (
-              <div className="overflow-x-auto rounded-md border border-line-strong bg-panel">
+              <div className="overflow-x-auto rounded-md border border-line-strong bg-surface">
                 <table className="w-full border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-line-strong">
-                      <th scope="col" className="sticky left-0 z-[1] bg-panel px-4 py-2.5 text-left font-medium text-ink-soft">
+                      <th scope="col" className="sticky left-0 z-[1] bg-surface px-4 py-2.5 text-left font-medium text-ink-soft">
                         Person
                       </th>
                       {days.map((d) => (
@@ -98,7 +98,7 @@ export function Attendance() {
                       const total = days.reduce((sum, d) => sum + (hours.get(`${u.id}:${d}`) ?? 0), 0)
                       return (
                         <tr key={u.id} className="border-b border-line last:border-b-0">
-                          <th scope="row" className="sticky left-0 z-[1] bg-panel px-4 py-2 text-left font-medium whitespace-nowrap">
+                          <th scope="row" className="sticky left-0 z-[1] bg-surface px-4 py-2 text-left font-medium whitespace-nowrap">
                             <a href={href('people', u.id)}>{u.name}</a>
                           </th>
                           {days.map((d) => {
@@ -106,7 +106,7 @@ export function Attendance() {
                             return (
                               <td
                                 key={d}
-                                className={`h-11 border-l border-paper text-center font-medium ${cellClass(h)}`}
+                                className={`h-11 border-l border-canvas text-center font-medium ${cellClass(h)}`}
                                 title={`${u.name}, ${formatDay(d)}: ${formatHours(h)}`}
                               >
                                 {h > 0 ? h.toFixed(1) : ''}

@@ -122,3 +122,78 @@ export function getRanking(by: RankMetric, range: DayRange) {
 export function getAttendance(range: DayRange) {
   return request<Attendance>(`${dashboard}/attendance${query(range)}`)
 }
+
+// ---- Overview summary (GET /api/admin/dashboard/summary) ---------------------
+
+export type AttentionTask = {
+  id: number
+  name: string
+  status: TaskStatus
+  deadline: string | null
+  overdue: boolean
+  project: Ref | null
+  assignee: Ref | null
+}
+
+export type DepartmentSummary = {
+  id: number | null
+  name: string
+  // Fixed chart colour slot: 1–4 are series colours, 0 or 5 means "other".
+  slot: number
+  members: number
+  active_now: number
+  open_tasks: number
+  overdue_tasks: number
+  completed_tasks: number
+  hours_week: number
+  timer_hours_week: number
+  utilization_pct: number | null
+  avg_rating: number | null
+}
+
+export type ProjectProgress = {
+  id: number
+  name: string
+  status: ProjectStatus
+  deadline: string | null
+  overdue: boolean
+  task_count: number
+  tasks_done: number
+  tasks_overdue: number
+  progress_pct: number
+  by_department: { department_id: number | null; unassigned: boolean; total: number; done: number }[]
+}
+
+export type DashboardSummary = {
+  date: string
+  people: { active: number; inactive: number; admins: number; clocked_in_now: number; hours_today: number }
+  tasks: {
+    total: number
+    not_started: number
+    pending: number
+    in_progress: number
+    in_review: number
+    rework: number
+    completed: number
+    overdue: number
+    completed_this_week: number
+    due_this_week: number
+  }
+  projects: ProjectProgress[]
+  departments: DepartmentSummary[]
+  attention: Record<'waiting_review' | 'overdue' | 'due_soon', { count: number; tasks: AttentionTask[] }>
+  on_the_clock: { user_id: number; name: string | null; department_id: number | null; clock_in: string }[]
+  hours_trend: { days: string[]; series: { department_id: number | null; values: number[] }[] }
+  activity: {
+    id: number
+    old_status: TaskStatus | null
+    new_status: TaskStatus
+    changed_at: string
+    task: Ref | null
+    actor: Ref | null
+  }[]
+}
+
+export function getSummary() {
+  return request<DashboardSummary>(`${dashboard}/summary`)
+}

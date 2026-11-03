@@ -17,9 +17,10 @@ import { useApi } from '../../lib/useApi'
 import { getDashboardTasks, getPeople, getProjects, type TaskFilters } from '../../api/admin/dashboard'
 import type { TaskStatus } from '../../api/types'
 
-// Route params pre-fill the filters: #/tasks/overdue, #/tasks/project/3, #/tasks/person/6
+// Route params pre-fill the filters: #/tasks/overdue, #/tasks/status/todo, #/tasks/project/3, #/tasks/person/6
 function filtersFromRoute(params: string[]): TaskFilters {
   if (params[0] === 'overdue') return { overdue: true }
+  if (params[0] === 'status' && params[1]) return { status: params[1] as TaskStatus }
   if (params[0] === 'project' && Number(params[1])) return { project_id: Number(params[1]) }
   if (params[0] === 'person' && Number(params[1])) return { assigned_to: Number(params[1]) }
   return {}
@@ -124,7 +125,7 @@ export function Tasks({ params }: { params: string[] }) {
                           {formatDate(t.deadline)}
                           {t.overdue && <OverdueTag />}
                         </td>
-                        <td className={`num ${overEstimate ? 'font-medium text-over' : ''}`}>
+                        <td className={`num ${overEstimate ? 'font-medium text-danger' : ''}`}>
                           {t.actual_minutes ? formatMinutes(t.actual_minutes) : '—'}
                         </td>
                         <td className="num">{formatMinutes(t.estimated_minutes)}</td>

@@ -24,7 +24,7 @@ type Props = {
 }
 
 const inputClass =
-  'min-h-10 w-full rounded-md border border-line-strong bg-panel px-3 text-ink focus:border-stamp focus:outline-none focus:ring-3 focus:ring-stamp/15 disabled:bg-paper disabled:text-ink-soft'
+  'min-h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-ink focus:border-primary focus:outline-none focus:ring-3 focus:ring-primary/15 disabled:bg-canvas disabled:text-ink-soft'
 
 // Add or edit a person. Rendered only while open; it opens itself as a modal on mount.
 export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }: Props) {
@@ -95,7 +95,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
         if (!saving) onClose()
       }}
       aria-labelledby="user-dialog-title"
-      className="m-auto max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg bg-panel p-0 text-ink shadow-xl backdrop:bg-ink/40"
+      className="m-auto max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg bg-surface p-0 text-ink shadow-xl backdrop:bg-chrome/60"
     >
       <form onSubmit={handleSubmit} className="grid gap-5 p-6 sm:p-8">
         <header>
@@ -152,7 +152,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
             ).map((option) => (
               <label
                 key={option.value}
-                className={`flex gap-2.5 rounded-md border border-line-strong px-3 py-2.5 has-checked:border-stamp has-checked:bg-stamp-tint ${isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                className={`flex gap-2.5 rounded-md border border-line-strong px-3 py-2.5 has-checked:border-primary has-checked:bg-primary-tint ${isSelf ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
               >
                 <input
                   type="radio"
@@ -161,7 +161,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
                   checked={role === option.value}
                   onChange={() => setRole(option.value)}
                   disabled={isSelf}
-                  className="mt-1 accent-stamp"
+                  className="mt-1 accent-primary"
                 />
                 <span>
                   <span className="block text-sm font-medium">{option.label}</span>
@@ -173,22 +173,45 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
           {isSelf && <p className="mt-1.5 text-xs text-ink-soft">You can't change your own role.</p>}
         </fieldset>
 
-        <Field label="Department">
+        <Field
+          label="Department"
+          hint={
+            departments.loading && !departments.data
+              ? 'Loading departments…'
+              : departments.data?.departments.length === 0
+                ? 'No departments exist yet, so this person will have none for now.'
+                : undefined
+          }
+        >
           {(id) => (
-            <select
-              id={id}
-              className={inputClass}
-              value={departmentId ?? ''}
-              onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : null)}
-              disabled={!departments.data}
-            >
-              <option value="">No department</option>
-              {departments.data?.departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                id={id}
+                className={inputClass}
+                value={departmentId ?? ''}
+                onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : null)}
+                disabled={!departments.data}
+              >
+                <option value="">No department</option>
+                {departments.data?.departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              {departments.error && (
+                <p className="flex flex-wrap items-center gap-x-3 text-xs text-danger" role="alert">
+                  Couldn't load departments: {departments.error}
+                  <button
+                    type="button"
+                    onClick={departments.reload}
+                    className="cursor-pointer font-medium underline underline-offset-2"
+                  >
+                    Try again
+                  </button>
+                </p>
+              )}
+            </>
           )}
         </Field>
 
@@ -215,7 +238,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
           <label className={`flex items-start gap-2.5 ${isSelf ? 'opacity-60' : 'cursor-pointer'}`}>
             <input
               type="checkbox"
-              className="mt-1 size-4 accent-stamp"
+              className="mt-1 size-4 accent-primary"
               checked={active}
               onChange={(e) => setActive(e.target.checked)}
               disabled={isSelf}
@@ -232,7 +255,7 @@ export function UserDialog({ user, isSelf = false, onClose, onSaved, onDeleted }
         )}
 
         {error && (
-          <p className="rounded-md border border-over/30 bg-over-tint px-3 py-2.5 text-sm text-over" role="alert">
+          <p className="rounded-md border border-danger/30 bg-danger-tint px-3 py-2.5 text-sm text-danger" role="alert">
             {error}
           </p>
         )}
@@ -313,7 +336,7 @@ function DeleteZone({
   }
 
   return (
-    <section aria-labelledby="delete-title" className="rounded-md border border-over/25 p-4">
+    <section aria-labelledby="delete-title" className="rounded-md border border-danger/25 p-4">
       <h3 id="delete-title" className="text-base font-semibold">
         Delete {user.name}
       </h3>
@@ -353,7 +376,7 @@ function DeleteZone({
       )}
 
       {error && (
-        <p className="mt-2 text-sm text-over" role="alert">
+        <p className="mt-2 text-sm text-danger" role="alert">
           {error}
         </p>
       )}

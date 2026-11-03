@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Ranking } from '../../components/Ranking'
 import { UserDialog } from '../../components/UserDialog'
 import { Button, Check, DataState, LiveDot, PageHeader, RangePicker, Sub, SuccessNotice, TableWrap, Toolbar } from '../../components/ui'
 import { takeFlash } from '../../lib/flash'
@@ -62,7 +63,7 @@ export function People() {
               </thead>
               <tbody>
                 {data.users.map((u) => (
-                  <tr key={u.id} className={u.is_active ? 'hover:bg-panel' : 'text-ink-faint'}>
+                  <tr key={u.id} className={u.is_active ? undefined : 'text-ink-faint'}>
                     <th scope="row">
                       <a href={href('people', u.id)}>{u.name}</a>
                       <Sub>
@@ -74,7 +75,7 @@ export function People() {
                       {!u.is_active ? (
                         'Deactivated'
                       ) : u.clocked_in ? (
-                        <span className="inline-flex items-center gap-2 font-medium text-done">
+                        <span className="inline-flex items-center gap-2 font-medium text-status-done">
                           <LiveDot /> Clocked in
                         </span>
                       ) : (
@@ -84,7 +85,7 @@ export function People() {
                     <td className="num">{formatHours(u.hours_clocked)}</td>
                     <td className="num">{u.tasks_done}</td>
                     <td className="num">{u.open_tasks}</td>
-                    <td className={`num ${u.overdue_tasks ? 'font-semibold text-over' : ''}`}>{u.overdue_tasks}</td>
+                    <td className={`num ${u.overdue_tasks ? 'font-semibold text-danger' : ''}`}>{u.overdue_tasks}</td>
                     <td className="num">{formatPct(u.on_time_pct)}</td>
                     <td className="num">{formatRating(u.avg_rating)}</td>
                     <td className="num">{u.rework_bounces}</td>
@@ -95,6 +96,9 @@ export function People() {
           </TableWrap>
         )}
       </DataState>
+      <div className="mt-10">
+        <Ranking />
+      </div>
     </>
   )
 }

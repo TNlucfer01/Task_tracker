@@ -82,3 +82,20 @@ Rules:
 - Passwords are stored as bcrypt hashes and are never returned by the API.
 
 `GET /api/admin/department` lists departments for the form's picker.
+
+## Design system
+
+The UI follows the Task Tracker design system: a navy app frame, brand blue `primary`, a fixed set of task status colours, IBM Plex Sans, and light and dark themes that follow the operating system. The colour tokens live in `Front/src/index.css` as Tailwind theme variables (`bg-surface`, `text-ink-soft`, `bg-status-review`, `bg-series-1` and so on). Use those tokens instead of raw colours.
+
+## Overview dashboard
+
+`GET /api/admin/dashboard/summary` returns everything the overview shows in one request. "This week" means the last 7 days in India time.
+
+- **People:** active team members, how many are clocked in now, and hours clocked today.
+- **Tasks:** not started (`todo`), pending (in progress, in review and rework), completed, overdue, completed this week and due this week.
+- **Projects:** status, progress, and tasks done of tasks assigned for each department.
+- **Departments:** members, who's working now, open, overdue and completed tasks, hours this week, time on task timers as a share of clocked hours, and average review rating.
+- **Needs attention:** tasks waiting for review, overdue tasks, and tasks due in the next 7 days.
+- **On the clock**, a 14-day **hours trend** by department, and the latest **activity** (status changes).
+
+The overview refreshes every 60 seconds while the tab is visible.

@@ -57,7 +57,7 @@ export default function App() {
     return (
       <>
         {sessionError && (
-          <p className="bg-over-tint px-4 py-2.5 text-center text-sm text-over" role="alert">
+          <p className="bg-danger-tint px-4 py-2.5 text-center text-sm text-danger" role="alert">
             {sessionError}
           </p>
         )}
@@ -96,7 +96,7 @@ function AdminApp({ user, onSignOut, signingOut }: { user: User; onSignOut: () =
     default:
       page = (
         <div className="py-10">
-          <h1 className="text-[34px] font-bold tracking-tight">Page not found</h1>
+          <h1 className="text-[26px] leading-8 font-semibold tracking-tight">Page not found</h1>
           <p className="mt-2 text-ink-soft">
             This page doesn't exist. <a href="#/">Go to the overview</a>
           </p>

@@ -4,7 +4,7 @@ import type { TaskStatus } from '../api/types'
 const TZ = 'Asia/Kolkata'
 
 export const taskStatusLabel: Record<TaskStatus, string> = {
-  todo: 'To do',
+  todo: 'Not started',
   in_progress: 'In progress',
   in_review: 'In review',
   done: 'Done',
@@ -101,4 +101,25 @@ export function formatRating(value: number | null) {
 
 export function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`
+}
+
+// "just now", "12 min ago", "3 h ago", "yesterday", then a date.
+export function formatAgo(iso: string, now = Date.now()) {
+  const minutes = Math.round((now - new Date(iso).getTime()) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  if (hours < 48) return 'yesterday'
+  return formatDate(iso)
+}
+
+// Deadline relative to now, for lists: "Due today", "Due in 3 days", "2 days late".
+export function formatDue(iso: string | null, now = Date.now()) {
+  if (!iso) return 'No deadline'
+  const days = Math.round((new Date(iso).getTime() - now) / 86_400_000)
+  if (new Date(iso).getTime() < now) return days === 0 ? 'Due earlier today' : `${plural(-days, 'day')} late`
+  if (days === 0) return 'Due today'
+  if (days === 1) return 'Due tomorrow'
+  return `Due in ${days} days`
 }

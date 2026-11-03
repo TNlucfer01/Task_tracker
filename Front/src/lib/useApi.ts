@@ -3,9 +3,25 @@ import { useCallback, useEffect, useState } from 'react'
 type State<T> = { data: T | null; error: string | null; loading: boolean }
 
 // Runs `load` whenever `key` changes. Stale responses from an older key are ignored.
-export function useApi<T>(load: () => Promise<T>, key: string) {
+// With `refreshMs`, it also reloads on that interval while the tab is visible, keeping the old
+// data on screen until the new data arrives.
+export function useApi<T>(load: () => Promise<T>, key: string, refreshMs?: number) {
   const [state, setState] = useState<State<T>>({ data: null, error: null, loading: true })
   const [reloads, setReloads] = useState(0)
+  const [loadedAt, setLoadedAt] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!refreshMs) return
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setReloads((n) => n + 1)
+    }, refreshMs)
+    const onVisible = () => document.visibilityState === 'visible' && setReloads((n) => n + 1)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refreshMs])
 
   useEffect(() => {
     let current = true
@@ -13,7 +29,10 @@ export function useApi<T>(load: () => Promise<T>, key: string) {
 
     load()
       .then((data) => {
-        if (current) setState({ data, error: null, loading: false })
+        if (current) {
+          setState({ data, error: null, loading: false })
+          setLoadedAt(Date.now())
+        }
       })
       .catch((error: unknown) => {
         if (current) {
@@ -33,7 +52,7 @@ export function useApi<T>(load: () => Promise<T>, key: string) {
   }, [key, reloads])
 
   const reload = useCallback(() => setReloads((n) => n + 1), [])
-  return { ...state, reload }
+  return { ...state, reload, loadedAt }
 }
 
 // Re-renders every `ms` so live durations keep counting.

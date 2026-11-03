@@ -96,7 +96,7 @@ function PersonView({
             {user.role === 'admin' ? 'Admin, ' : ''}
             {user.department?.name ?? 'No department'}, {user.email}
             <span
-              className={`ml-3 inline-flex items-center gap-2 font-medium ${user.clocked_in ? 'text-done' : 'text-ink-soft'}`}
+              className={`ml-3 inline-flex items-center gap-2 font-medium ${user.clocked_in ? 'text-status-done' : 'text-ink-soft'}`}
             >
               {user.clocked_in && <LiveDot />}
               {!user.is_active
@@ -258,7 +258,7 @@ function HoursChart({ range, days }: { range: DayRange; days: { day: string; hou
     <div role="img" aria-label={`Hours clocked per day, ${formatDay(range.from)} to ${formatDay(range.to)}`}>
       <div className="relative h-40">
         <div className="absolute inset-x-0 border-t border-dashed border-line-strong" style={{ bottom: `${(8 / max) * 100}%` }}>
-          <span className="absolute -top-5 right-0 bg-paper pl-1 text-xs text-ink-faint">8h day</span>
+          <span className="absolute -top-5 right-0 bg-canvas pl-1 text-xs text-ink-faint">8h day</span>
         </div>
         <ol className="relative grid h-full items-end gap-[3px] border-b border-line-strong" style={columns}>
           {all.map((day) => {
@@ -267,7 +267,7 @@ function HoursChart({ range, days }: { range: DayRange; days: { day: string; hou
               <li
                 key={day}
                 title={`${formatDay(day)}: ${formatHours(hours)}`}
-                className="rounded-t-sm bg-stamp"
+                className="rounded-t-sm bg-primary"
                 style={{ height: `${(hours / max) * 100}%` }}
               />
             )
@@ -295,7 +295,7 @@ function Estimate({ task }: { task: DashboardTask }) {
   const over = pct > 100
   return (
     <div className="grid gap-1.5">
-      <span className={over ? 'font-medium text-over' : undefined}>
+      <span className={over ? 'font-medium text-danger' : undefined}>
         {formatMinutes(task.actual_minutes)} of {formatMinutes(task.estimated_minutes)}
       </span>
       <Meter value={pct} over={over} label={`${Math.round(pct)}% of estimate`} />
@@ -305,7 +305,7 @@ function Estimate({ task }: { task: DashboardTask }) {
 
 function Stars({ rating }: { rating: number }) {
   return (
-    <span className="tracking-widest whitespace-nowrap text-rework" aria-label={`${rating} out of 5`}>
+    <span className="tracking-widest whitespace-nowrap text-status-rework" aria-label={`${rating} out of 5`}>
       {'★'.repeat(rating)}
       <span className="text-line-strong" aria-hidden="true">
         {'★'.repeat(5 - rating)}

@@ -11,7 +11,7 @@ export function MyTasks({ user, onSignOut, signingOut }: { user: User; onSignOut
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-line bg-panel">
+      <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
           <Brand />
           <div className="flex items-center gap-4">
@@ -24,7 +24,7 @@ export function MyTasks({ user, onSignOut, signingOut }: { user: User; onSignOut
       </header>
 
       <main className="mx-auto max-w-3xl px-4 pt-10 pb-16 sm:px-8">
-        <h1 className="text-[34px] leading-tight font-bold tracking-tight">Your tasks</h1>
+        <h1 className="text-[26px] leading-8 font-semibold tracking-tight">Your tasks</h1>
         <DataState
           state={tasks}
           isEmpty={(d) => d.tasks.length === 0}

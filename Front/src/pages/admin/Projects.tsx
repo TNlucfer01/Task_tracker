@@ -59,7 +59,7 @@ export function Projects() {
                         .filter((s) => p.tasks_by_status[s])
                         .map((s) => `${taskStatusLabel[s]} ${p.tasks_by_status[s]}`)
                         .join(', ')}
-                      {p.tasks_overdue > 0 && <span className="font-medium text-over">, {p.tasks_overdue} overdue</span>}
+                      {p.tasks_overdue > 0 && <span className="font-medium text-danger">, {p.tasks_overdue} overdue</span>}
                     </p>
                   )}
                   <a href={href('tasks', 'project', p.id)} className="text-sm">
