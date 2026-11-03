@@ -3,7 +3,7 @@ services:
     name: task-tracker
     runtime: node
     plan: free
-    buildCommand: npm ci --prefix Back && npm ci --prefix Front && npm run build --prefix Front
+    buildCommand: npm ci --include=dev --prefix Back && npm ci --include=dev --prefix Front && npm run build --prefix Front
     startCommand: npm start --prefix Back
     healthCheckPath: /api/health
     envVars:
