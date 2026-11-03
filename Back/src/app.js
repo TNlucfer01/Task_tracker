@@ -7,6 +7,7 @@ const config = require("./config");
 const { errorHandler } = require("./middleware/errors");
 
 const app = express(); // Create the Express app, which is a function that can handle requests and responses.
+if (config.production) app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(cors({ origin: config.frontendUrl, credentials: true }));
 app.use(express.json());
