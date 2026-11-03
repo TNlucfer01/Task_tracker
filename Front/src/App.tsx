@@ -1,117 +1,117 @@
-import { useEffect, useState } from 'react'
-import { AppShell } from './components/AppShell'
-import { useRoute } from './lib/router'
+// Top level: loads the session, then routes to a page inside the shell (or shows sign in).
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { onSignedOut } from './api/client'
+import { auth } from './api/endpoints'
+import type { Me } from './api/types'
+import { Shell, ToastHost } from './components/Shell'
+import { Button, Empty } from './components/ui'
+import { ClockProvider } from './lib/clock'
+import { href, useRoute } from './lib/router'
+import { can, SessionContext } from './lib/session'
+import { applyTheme, savedTheme } from './lib/theme'
+import { onToast } from './lib/toast'
+import { Account } from './pages/Account'
+import { Dashboard } from './pages/Dashboard'
+import { Home } from './pages/Home'
 import { Login } from './pages/Login'
-import { MyTasks } from './pages/MyTasks'
-import { Attendance } from './pages/admin/Attendance'
-import { Overview } from './pages/admin/Overview'
-import { People } from './pages/admin/People'
-import { Person } from './pages/admin/Person'
-import { Projects } from './pages/admin/Projects'
-import { Tasks } from './pages/admin/Tasks'
-import { getCurrentUser, logout } from './api/auth'
-import { ApiError } from './api/client'
-import type { User } from './api/types'
+import { People } from './pages/People'
+import { Person } from './pages/Person'
+import { ProjectPage } from './pages/Project'
+import { Projects } from './pages/Projects'
+import { Reports } from './pages/Reports'
+import { Settings } from './pages/Settings'
+import { TaskPage } from './pages/Task'
+import { Tasks } from './pages/Tasks'
+import { Time } from './pages/Time'
 
+applyTheme(savedTheme())
+
+/** Picks the page for the current route, checking permissions. */
+function Page({ me, parts, params }: { me: Me; parts: string[]; params: URLSearchParams }) {
+  const [section, id] = parts
+  const n = Number(id)
+  const denied = (
+    <Empty action={<Button onClick={() => (window.location.hash = href())}>Go home</Button>}>
+      Your role doesn't include this page. Ask an admin if you need access.
+    </Empty>
+  )
+  switch (section) {
+    case undefined:
+      return <Home />
+    case 'tasks':
+      return n ? <TaskPage id={n} /> : <Tasks params={params} />
+    case 'projects':
+      return n ? <ProjectPage id={n} params={params} /> : <Projects />
+    case 'dashboard':
+      return can(me, 'dashboard.view') ? <Dashboard /> : denied
+    case 'people':
+      if (!can(me, 'people.view')) return denied
+      return n ? <Person id={n} /> : <People />
+    case 'time':
+      return <Time />
+    case 'reports':
+      return can(me, 'reports.export') ? <Reports /> : denied
+    case 'settings':
+      return <Settings tab={id} />
+    case 'account':
+      return <Account />
+    default:
+      return <Empty action={<Button onClick={() => (window.location.hash = href())}>Go home</Button>}>That page doesn't exist.</Empty>
+  }
+}
+
+/** The app root. */
 export default function App() {
-  const [user, setUser] = useState<User | null>(null)
-  const [checking, setChecking] = useState(true)
-  const [sessionError, setSessionError] = useState<string | null>(null)
-  const [signingOut, setSigningOut] = useState(false)
+  const [me, setMe] = useState<Me | null | undefined>(undefined)
+  const [message, setMessage] = useState<string | null>(null)
+  const { parts, params } = useRoute()
 
-  useEffect(() => {
-    let current = true
-    getCurrentUser()
-      .then(({ user }) => current && setUser(user))
-      .catch((error: unknown) => {
-        if (current && !(error instanceof ApiError && error.status === 401)) {
-          setSessionError(error instanceof Error ? error.message : 'Unable to connect to the server.')
-        }
-      })
-      .finally(() => current && setChecking(false))
-    return () => {
-      current = false
+  const refresh = useCallback(async () => {
+    try {
+      setMe((await auth.me()).user)
+    } catch {
+      setMe(null)
     }
   }, [])
 
-  async function handleSignOut() {
-    setSigningOut(true)
-    try {
-      await logout()
-    } finally {
-      setSigningOut(false)
-      setUser(null)
-      window.location.hash = ''
-    }
-  }
+  useEffect(() => {
+    void refresh()
+    return onSignedOut(() => setMe(null))
+  }, [refresh])
 
-  if (checking) {
-    return (
-      <p className="grid min-h-screen place-items-center text-ink-soft" role="status">
-        Checking your session…
-      </p>
+  useEffect(() => {
+    let timer = 0
+    return onToast((m) => {
+      setMessage(m)
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setMessage(null), 3200)
+    })
+  }, [])
+
+  const signOut = useCallback(async () => {
+    await auth.logout().catch(() => {})
+    setMe(null)
+    window.location.hash = href()
+  }, [])
+
+  let body: ReactNode
+  if (me === undefined) body = <div className="grid min-h-dvh place-items-center text-ink-faint">Loading…</div>
+  else if (me === null) body = <Login onSignedIn={setMe} />
+  else
+    body = (
+      <SessionContext.Provider value={{ me, refresh, signOut }}>
+        <ClockProvider enabled={can(me, 'time.track')}>
+          <Shell section={parts[0] ?? ''}>
+            <Page me={me} parts={parts} params={params} />
+          </Shell>
+        </ClockProvider>
+      </SessionContext.Provider>
     )
-  }
-
-  if (!user) {
-    return (
-      <>
-        {sessionError && (
-          <p className="bg-danger-tint px-4 py-2.5 text-center text-sm text-danger" role="alert">
-            {sessionError}
-          </p>
-        )}
-        <Login onSignedIn={setUser} />
-      </>
-    )
-  }
-
-  if (!user.permissions.includes('dashboard.view')) {
-    return <MyTasks user={user} onSignOut={handleSignOut} signingOut={signingOut} />
-  }
-
-  return <AdminApp user={user} onSignOut={handleSignOut} signingOut={signingOut} />
-}
-
-function AdminApp({ user, onSignOut, signingOut }: { user: User; onSignOut: () => void; signingOut: boolean }) {
-  const [section = '', ...params] = useRoute()
-
-  let page
-  const canViewPeople = user.permissions.includes('people.view')
-  switch (section) {
-    case '':
-      page = <Overview />
-      break
-    case 'people':
-      page = canViewPeople
-        ? params[0] && Number(params[0])
-          ? <Person key={params[0]} id={Number(params[0])} myId={user.id} canManageRoles={user.permissions.includes('roles.manage')} canManagePeople={user.permissions.includes('people.manage')} />
-          : <People canManageRoles={user.permissions.includes('roles.manage')} canManagePeople={user.permissions.includes('people.manage')} />
-        : <p className="py-10 text-ink-soft" role="alert">You don't have permission to view people.</p>
-      break
-    case 'projects':
-      page = <Projects />
-      break
-    case 'tasks':
-      page = <Tasks key={params.join('/')} params={params} />
-      break
-    case 'attendance':
-      page = <Attendance />
-      break
-    default:
-      page = (
-        <div className="py-10">
-          <h1 className="text-[26px] leading-8 font-semibold tracking-tight">Page not found</h1>
-          <p className="mt-2 text-ink-soft">
-            This page doesn't exist. <a href="#/">Go to the overview</a>
-          </p>
-        </div>
-      )
-  }
 
   return (
-    <AppShell user={user} section={section} onSignOut={onSignOut} signingOut={signingOut}>
-      {page}
-    </AppShell>
+    <>
+      {body}
+      <ToastHost message={message} />
+    </>
   )
 }

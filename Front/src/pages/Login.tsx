@@ -1,99 +1,57 @@
-import { useState, type FormEvent } from 'react'
-import { ClockMark } from '../components/AppShell'
-import { Button } from '../components/ui'
-import { login } from '../api/auth'
-import type { User } from '../api/types'
+// Sign in with a username or email.
+import { useState } from 'react'
+import { auth } from '../api/endpoints'
+import type { Me } from '../api/types'
+import { Icon } from '../components/icons'
+import { Button, Field, Input, Notice } from '../components/ui'
+import { useAction } from '../lib/useApi'
 
-const inputClass =
-  'min-h-11 w-full rounded-md border border-line-strong bg-surface px-3 text-ink focus:border-primary focus:outline-none focus:ring-3 focus:ring-primary/15'
-
-export function Login({ onSignedIn }: { onSignedIn: (user: User) => void }) {
+/** The sign-in screen. */
+export function Login({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setSubmitting(true)
-    setError(null)
-    try {
-      const { user } = await login(identifier, password)
-      setPassword('')
-      onSignedIn(user)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign in. Please try again.')
-      setSubmitting(false)
-    }
-  }
+  const { busy, error, run } = useAction()
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-      <div className="hidden flex-col justify-between bg-chrome p-12 text-chrome-ink lg:flex">
-        <p className="flex items-center gap-2.5 text-base font-semibold">
-          <ClockMark onChrome />
+    <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <section className="hidden flex-col justify-between bg-chrome p-12 text-chrome-ink lg:flex">
+        <p className="flex items-center gap-2 text-[15px] font-semibold text-white">
+          <span className="grid size-7 place-items-center rounded-md bg-[#6f95ff] text-[#0b1220]">
+            <Icon name="check" size={16} strokeWidth={2.5} />
+          </span>
           Task Tracker
         </p>
-        <p className="max-w-md text-[34px] leading-[1.15] font-semibold tracking-tight">
-          Clock in, do the work, and let the hours speak for themselves.
-        </p>
-        <p className="text-chrome-muted">Time tracking and task management for your team.</p>
-      </div>
-
-      <section aria-labelledby="login-title" className="flex items-center justify-center px-4 py-12 sm:px-8">
-        <div className="w-full max-w-sm">
-          <p className="mb-10 flex items-center gap-2.5 text-base font-semibold lg:hidden">
-            <ClockMark />
-            Task Tracker
-          </p>
-          <h1 className="text-[26px] leading-8 font-semibold tracking-tight">Sign in</h1>
-          <p className="mt-2 mb-8 text-ink-soft">
-            Admins see the team dashboard. Everyone else sees the tasks assigned to them.
-          </p>
-
-          <form className="grid gap-2" onSubmit={handleSubmit}>
-            <label htmlFor="identifier" className="text-sm font-medium">
-              Username or email
-            </label>
-            <input
-              id="identifier"
-              name="identifier"
-              type="text"
-              autoComplete="username"
-              className={inputClass}
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              required
-              maxLength={320}
-            />
-
-            <label htmlFor="password" className="mt-3 text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              className={inputClass}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              maxLength={1024}
-            />
-
-            {error && (
-              <p className="mt-3 rounded-md border border-danger/30 bg-danger-tint px-3 py-2.5 text-sm text-danger" role="alert">
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" variant="primary" className="mt-5 min-h-11" disabled={submitting}>
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
+        <div className="max-w-md">
+          <p className="text-[32px] leading-10 font-semibold tracking-[-0.01em] text-white">Every team's work, in one place.</p>
+          <p className="mt-4 text-chrome-muted">Plan projects, hand work in for review, and see how each department is doing, without chasing anyone for an update.</p>
         </div>
+        <ul className="grid gap-2 text-sm text-chrome-muted">
+          <li>Tasks are Markdown pages with their own properties.</li>
+          <li>Reviews keep quality visible: approve or send back with a note.</li>
+          <li>Clock in and time your tasks; managers see hours by department.</li>
+        </ul>
       </section>
-    </main>
+      <section className="grid place-items-center px-4 py-12">
+        <form
+          className="grid w-full max-w-sm gap-5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void run(async () => onSignedIn((await auth.login(identifier, password)).user))
+          }}
+        >
+          <div>
+            <h1 className="text-[26px] leading-8 font-semibold">Sign in</h1>
+            <p className="mt-1 text-ink-soft">Use the username or email your admin gave you.</p>
+          </div>
+          {error && <Notice tone="danger">{error}</Notice>}
+          <Field label="Username or email">{(id) => <Input id={id} autoComplete="username" required value={identifier} onChange={(e) => setIdentifier(e.target.value)} autoFocus />}</Field>
+          <Field label="Password">{(id) => <Input id={id} type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
+          <Button type="submit" variant="primary" busy={busy} className="w-full">
+            Sign in
+          </Button>
+          <p className="text-[13px] text-ink-faint">Forgot your password? Ask an admin to reset it from Settings.</p>
+        </form>
+      </section>
+    </div>
   )
 }

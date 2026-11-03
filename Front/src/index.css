@@ -1,240 +1,220 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
-/*
-  Task Tracker design system. Colour values are generated from the design system's tokens.json,
-  so the app and the published reference stay identical. Light is the default; dark follows the
-  operating system unless data-theme="light" or "dark" is set on <html>.
-*/
-@theme {
-  --color-canvas: #f4f6f9;
-  --color-surface: #ffffff;
-  --color-subtle: #eef1f5;
-  --color-line: #dde2ea;
-  --color-line-strong: #838c9f;
-  --color-ink: #121a2b;
-  --color-ink-soft: #4b5567;
-  --color-ink-faint: #646d7d;
-  --color-primary: #1f4fd1;
-  --color-primary-strong: #173da6;
-  --color-primary-tint: #e8eefc;
-  --color-on-primary: #ffffff;
-  --color-chrome: #0f1d3a;
-  --color-chrome-ink: #e6ebf5;
-  --color-chrome-muted: #a3afc7;
-  --color-success: #1b7442;
-  --color-success-tint: #e4f3e9;
-  --color-warning: #9a5b0a;
-  --color-warning-tint: #fbefd9;
-  --color-danger: #bd3328;
-  --color-danger-tint: #fbe8e6;
-  --color-status-todo: #646d7d;
-  --color-status-progress: #1f4fd1;
-  --color-status-review: #6a42c2;
-  --color-status-rework: #9a5b0a;
-  --color-status-done: #1b7442;
-  --color-shade-1: #dbe5fb;
-  --color-shade-2: #a9c0f3;
-  --color-shade-3: #3f6ad8;
-  --color-shade-4: #1a3a9a;
-  --color-series-1: #2a78d6;
-  --color-series-2: #eb6834;
-  --color-series-3: #1baf7a;
-  --color-series-4: #eda100;
-  --color-series-other: #9aa3b2;
+/* Design tokens from the Task Tracker design system. Light is the default; dark follows the OS
+   unless the person picks a theme (data-theme on <html>). */
+:root {
+  --canvas: #f4f6f9;
+  --surface: #ffffff;
+  --subtle: #eef1f5;
+  --line: #dde2ea;
+  --line-strong: #838c9f;
+  --ink: #121a2b;
+  --ink-soft: #4b5567;
+  --ink-faint: #646d7d;
+  --primary: #1f4fd1;
+  --primary-strong: #173da6;
+  --primary-tint: #e8eefc;
+  --on-primary: #ffffff;
+  --chrome: #0f1d3a;
+  --chrome-ink: #e6ebf5;
+  --chrome-muted: #a3afc7;
+  --success: #1b7442;
+  --success-tint: #e4f3e9;
+  --warning: #9a5b0a;
+  --warning-tint: #fbefd9;
+  --danger: #bd3328;
+  --danger-tint: #fbe8e6;
+  --status-todo: #646d7d;
+  --status-progress: #1f4fd1;
+  --status-review: #6a42c2;
+  --status-rework: #9a5b0a;
+  --status-done: #1b7442;
+  --shade-1: #dbe5fb;
+  --shade-2: #a9c0f3;
+  --shade-3: #3f6ad8;
+  --shade-4: #1a3a9a;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-other: #9aa3b2;
+  --shadow-overlay: 0 12px 32px rgba(15, 29, 58, 0.18);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --canvas: #0b1220;
+  --surface: #121b2c;
+  --subtle: #192438;
+  --line: #253149;
+  --line-strong: #5e6b88;
+  --ink: #e8ecf4;
+  --ink-soft: #aab4c6;
+  --ink-faint: #8c97ab;
+  --primary: #6f95ff;
+  --primary-strong: #9bb4ff;
+  --primary-tint: #1b2a4f;
+  --on-primary: #0b1220;
+  --chrome: #0d1628;
+  --chrome-ink: #e6ebf5;
+  --chrome-muted: #93a0ba;
+  --success: #4cc382;
+  --success-tint: #12301f;
+  --warning: #e3a54d;
+  --warning-tint: #36280f;
+  --danger: #f2786c;
+  --danger-tint: #3b1c1b;
+  --status-todo: #8c97ab;
+  --status-progress: #6f95ff;
+  --status-review: #a98bf0;
+  --status-rework: #e3a54d;
+  --status-done: #4cc382;
+  --shade-1: #1c2a4a;
+  --shade-2: #2b4791;
+  --shade-3: #7fa1f5;
+  --shade-4: #b8ccff;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-other: #5d6779;
+    --shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: #0b1220;
+  --surface: #121b2c;
+  --subtle: #192438;
+  --line: #253149;
+  --line-strong: #5e6b88;
+  --ink: #e8ecf4;
+  --ink-soft: #aab4c6;
+  --ink-faint: #8c97ab;
+  --primary: #6f95ff;
+  --primary-strong: #9bb4ff;
+  --primary-tint: #1b2a4f;
+  --on-primary: #0b1220;
+  --chrome: #0d1628;
+  --chrome-ink: #e6ebf5;
+  --chrome-muted: #93a0ba;
+  --success: #4cc382;
+  --success-tint: #12301f;
+  --warning: #e3a54d;
+  --warning-tint: #36280f;
+  --danger: #f2786c;
+  --danger-tint: #3b1c1b;
+  --status-todo: #8c97ab;
+  --status-progress: #6f95ff;
+  --status-review: #a98bf0;
+  --status-rework: #e3a54d;
+  --status-done: #4cc382;
+  --shade-1: #1c2a4a;
+  --shade-2: #2b4791;
+  --shade-3: #7fa1f5;
+  --shade-4: #b8ccff;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-other: #5d6779;
+  --shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
 
-  --font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
-
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-tint: var(--primary-tint);
+  --color-on-primary: var(--on-primary);
+  --color-chrome: var(--chrome);
+  --color-chrome-ink: var(--chrome-ink);
+  --color-chrome-muted: var(--chrome-muted);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-status-todo: var(--status-todo);
+  --color-status-progress: var(--status-progress);
+  --color-status-review: var(--status-review);
+  --color-status-rework: var(--status-rework);
+  --color-status-done: var(--status-done);
+  --color-shade-1: var(--shade-1);
+  --color-shade-2: var(--shade-2);
+  --color-shade-3: var(--shade-3);
+  --color-shade-4: var(--shade-4);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-other: var(--series-other);
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
-
-  --shadow-overlay: 0 12px 32px rgb(15 29 58 / 0.18);
-
-  --animate-live: live 2.4s ease-in-out infinite;
-
-  @keyframes live {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.35;
-    }
-  }
+  --shadow-overlay: var(--shadow-overlay);
 }
 
-@layer base {
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) {
-    --color-canvas: #0b1220;
-    --color-surface: #121b2c;
-    --color-subtle: #192438;
-    --color-line: #253149;
-    --color-line-strong: #5e6b88;
-    --color-ink: #e8ecf4;
-    --color-ink-soft: #aab4c6;
-    --color-ink-faint: #8c97ab;
-    --color-primary: #6f95ff;
-    --color-primary-strong: #9bb4ff;
-    --color-primary-tint: #1b2a4f;
-    --color-on-primary: #0b1220;
-    --color-chrome: #0d1628;
-    --color-chrome-ink: #e6ebf5;
-    --color-chrome-muted: #93a0ba;
-    --color-success: #4cc382;
-    --color-success-tint: #12301f;
-    --color-warning: #e3a54d;
-    --color-warning-tint: #36280f;
-    --color-danger: #f2786c;
-    --color-danger-tint: #3b1c1b;
-    --color-status-todo: #8c97ab;
-    --color-status-progress: #6f95ff;
-    --color-status-review: #a98bf0;
-    --color-status-rework: #e3a54d;
-    --color-status-done: #4cc382;
-    --color-shade-1: #1c2a4a;
-    --color-shade-2: #2b4791;
-    --color-shade-3: #7fa1f5;
-    --color-shade-4: #b8ccff;
-    --color-series-1: #3987e5;
-    --color-series-2: #d95926;
-    --color-series-3: #199e70;
-    --color-series-4: #c98500;
-    --color-series-other: #5d6779;
-      --shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.5);
-      color-scheme: dark;
-    }
-  }
-
-  :root[data-theme='dark'] {
-  --color-canvas: #0b1220;
-  --color-surface: #121b2c;
-  --color-subtle: #192438;
-  --color-line: #253149;
-  --color-line-strong: #5e6b88;
-  --color-ink: #e8ecf4;
-  --color-ink-soft: #aab4c6;
-  --color-ink-faint: #8c97ab;
-  --color-primary: #6f95ff;
-  --color-primary-strong: #9bb4ff;
-  --color-primary-tint: #1b2a4f;
-  --color-on-primary: #0b1220;
-  --color-chrome: #0d1628;
-  --color-chrome-ink: #e6ebf5;
-  --color-chrome-muted: #93a0ba;
-  --color-success: #4cc382;
-  --color-success-tint: #12301f;
-  --color-warning: #e3a54d;
-  --color-warning-tint: #36280f;
-  --color-danger: #f2786c;
-  --color-danger-tint: #3b1c1b;
-  --color-status-todo: #8c97ab;
-  --color-status-progress: #6f95ff;
-  --color-status-review: #a98bf0;
-  --color-status-rework: #e3a54d;
-  --color-status-done: #4cc382;
-  --color-shade-1: #1c2a4a;
-  --color-shade-2: #2b4791;
-  --color-shade-3: #7fa1f5;
-  --color-shade-4: #b8ccff;
-  --color-series-1: #3987e5;
-  --color-series-2: #d95926;
-  --color-series-3: #199e70;
-  --color-series-4: #c98500;
-  --color-series-other: #5d6779;
-    --shadow-overlay: 0 12px 32px rgb(0 0 0 / 0.5);
-    color-scheme: dark;
-  }
-
-  html {
-    font-family: var(--font-sans);
-    font-size: 15px;
-    line-height: 1.5;
-    font-variant-numeric: tabular-nums;
-    -webkit-font-smoothing: antialiased;
-    color: var(--color-ink);
-    background: var(--color-canvas);
-  }
-
-  body {
-    min-width: 320px;
-    min-height: 100vh;
-  }
-
-  h1,
-  h2,
-  h3 {
-    font-family: var(--font-display);
-    text-wrap: balance;
-  }
-
-  a {
-    color: var(--color-primary);
-    text-underline-offset: 3px;
-  }
-
-  a:hover {
-    color: var(--color-primary-strong);
-  }
-
-  :focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
-    outline-offset: 2px;
-    border-radius: 4px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation: none !important;
-      transition: none !important;
-    }
-  }
+html { background: var(--canvas); }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 2px; }
+::selection { background: var(--primary-tint); }
 
-/* Data tables repeat the same cell styling everywhere, so it lives here once (design system: DataTable). */
-@layer components {
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-    line-height: 20px;
+dialog::backdrop { background: rgba(11, 18, 32, 0.45); }
+dialog { color: var(--ink); }
 
-    & th,
-    & td {
-      padding: 12px 14px;
-      text-align: left;
-      vertical-align: top;
-      border-bottom: 1px solid var(--color-line);
-    }
+/* Data tables: dense rows, right-aligned numbers. */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.data-table thead th { background: var(--subtle); color: var(--ink-soft); font-weight: 500; font-size: 13px; white-space: nowrap; position: sticky; top: 0; }
+.data-table tbody tr:hover { background: color-mix(in srgb, var(--subtle) 60%, transparent); }
+.data-table tbody tr:last-child > * { border-bottom: 0; }
+.data-table .num { text-align: right; white-space: nowrap; }
 
-    & thead th {
-      padding-block: 10px;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--color-ink-soft);
-      background: var(--color-subtle);
-      border-bottom-color: var(--color-line-strong);
-      white-space: nowrap;
-    }
+/* Rendered Markdown inside task pages and comments. */
+.prose-md { line-height: 1.6; overflow-wrap: anywhere; }
+.prose-md > :first-child { margin-top: 0; }
+.prose-md > :last-child { margin-bottom: 0; }
+.prose-md h1 { font-size: 22px; line-height: 28px; font-weight: 600; margin: 24px 0 8px; }
+.prose-md h2 { font-size: 18px; line-height: 24px; font-weight: 600; margin: 20px 0 8px; }
+.prose-md h3 { font-size: 15px; font-weight: 600; margin: 16px 0 6px; }
+.prose-md p, .prose-md ul, .prose-md ol, .prose-md pre, .prose-md blockquote, .prose-md table { margin: 0 0 12px; }
+.prose-md ul { list-style: disc; padding-left: 22px; }
+.prose-md ol { list-style: decimal; padding-left: 22px; }
+.prose-md li { margin: 2px 0; }
+.prose-md li:has(> input[type="checkbox"]) { list-style: none; margin-left: -20px; }
+.prose-md input[type="checkbox"] { margin-right: 6px; accent-color: var(--primary); }
+.prose-md code { background: var(--subtle); border-radius: 4px; padding: 1px 5px; font-size: 0.92em; }
+.prose-md pre { background: var(--subtle); border: 1px solid var(--line); border-radius: 6px; padding: 12px; overflow-x: auto; }
+.prose-md pre code { background: none; padding: 0; }
+.prose-md blockquote { border-left: 3px solid var(--line-strong); padding-left: 12px; color: var(--ink-soft); }
+.prose-md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.prose-md th, .prose-md td { border: 1px solid var(--line); padding: 6px 10px; }
+.prose-md th { background: var(--subtle); }
+.prose-md hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+.prose-md img { max-width: 100%; }
 
-    & tbody tr:last-child > * {
-      border-bottom: 0;
-    }
-
-    & tbody tr:hover > * {
-      background: color-mix(in srgb, var(--color-subtle) 60%, transparent);
-    }
-
-    & tbody th {
-      font-weight: 500;
-    }
-
-    & .num {
-      text-align: right;
-      white-space: nowrap;
-    }
-  }
-}
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.live-dot { animation: live-pulse 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }

@@ -1,49 +1,21 @@
+// Data-loading hooks.
 import { useCallback, useEffect, useState } from 'react'
 
-type State<T> = { data: T | null; error: string | null; loading: boolean }
+export type Loadable<T> = { data: T | null; error: string | null; loading: boolean; reload: () => void; set: (data: T) => void }
 
-// Runs `load` whenever `key` changes. Stale responses from an older key are ignored.
-// With `refreshMs`, it also reloads on that interval while the tab is visible, keeping the old
-// data on screen until the new data arrives.
-export function useApi<T>(load: () => Promise<T>, key: string, refreshMs?: number) {
-  const [state, setState] = useState<State<T>>({ data: null, error: null, loading: true })
+/** Runs `load` whenever `key` changes; ignores responses from an older key. */
+export function useApi<T>(load: () => Promise<T>, key: string): Loadable<T> {
+  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: true })
   const [reloads, setReloads] = useState(0)
-  const [loadedAt, setLoadedAt] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (!refreshMs) return
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') setReloads((n) => n + 1)
-    }, refreshMs)
-    const onVisible = () => document.visibilityState === 'visible' && setReloads((n) => n + 1)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.clearInterval(id)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [refreshMs])
 
   useEffect(() => {
     let current = true
     setState((prev) => ({ ...prev, loading: true, error: null }))
-
     load()
-      .then((data) => {
-        if (current) {
-          setState({ data, error: null, loading: false })
-          setLoadedAt(Date.now())
-        }
-      })
+      .then((data) => current && setState({ data, error: null, loading: false }))
       .catch((error: unknown) => {
-        if (current) {
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            error: error instanceof Error ? error.message : 'Something went wrong.',
-          }))
-        }
+        if (current) setState((prev) => ({ ...prev, loading: false, error: error instanceof Error ? error.message : 'Something went wrong.' }))
       })
-
     return () => {
       current = false
     }
@@ -52,10 +24,11 @@ export function useApi<T>(load: () => Promise<T>, key: string, refreshMs?: numbe
   }, [key, reloads])
 
   const reload = useCallback(() => setReloads((n) => n + 1), [])
-  return { ...state, reload, loadedAt }
+  const set = useCallback((data: T) => setState({ data, error: null, loading: false }), [])
+  return { ...state, reload, set }
 }
 
-// Re-renders every `ms` so live durations keep counting.
+/** Re-renders every `ms` so live durations keep counting. */
 export function useNow(ms = 30_000) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -63,4 +36,23 @@ export function useNow(ms = 30_000) {
     return () => window.clearInterval(id)
   }, [ms])
   return now
+}
+
+/** Wraps an async action with a busy flag and error message. */
+export function useAction() {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const run = useCallback(async <R,>(fn: () => Promise<R>): Promise<R | undefined> => {
+    setBusy(true)
+    setError(null)
+    try {
+      return await fn()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.')
+      return undefined
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+  return { busy, error, setError, run }
 }

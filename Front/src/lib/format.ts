@@ -1,106 +1,104 @@
-import type { DayRange, ProjectStatus } from '../api/admin/dashboard'
-import type { TaskStatus } from '../api/types'
+// Formatting and labels. Dates show in India time, matching the server's working days.
+import type { Priority, ProjectStatus, Scope, TaskStatus } from '../api/types'
 
 const TZ = 'Asia/Kolkata'
 
+export const taskStatuses: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'rework', 'done']
 export const taskStatusLabel: Record<TaskStatus, string> = {
   todo: 'Not started',
   in_progress: 'In progress',
   in_review: 'In review',
-  done: 'Done',
   rework: 'Rework',
+  done: 'Done',
+}
+export const priorities: Priority[] = ['urgent', 'high', 'medium', 'low']
+export const priorityLabel: Record<Priority, string> = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' }
+export const projectStatuses: ProjectStatus[] = ['planned', 'active', 'on_hold', 'completed']
+export const projectStatusLabel: Record<ProjectStatus, string> = { planned: 'Planned', active: 'Active', on_hold: 'On hold', completed: 'Completed' }
+export const scopeLabel: Record<Scope, string> = { all: 'Whole company', department: 'Their department', own: 'Only their own work' }
+
+/** "12 Mar 2026" (adds the year only when it differs from this year). */
+export function formatDate(value: string | null | undefined) {
+  if (!value) return '—'
+  const d = new Date(value.length === 10 ? `${value}T00:00:00+05:30` : value)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }), timeZone: TZ })
 }
 
-export const taskStatuses = Object.keys(taskStatusLabel) as TaskStatus[]
-
-export const projectStatusLabel: Record<ProjectStatus, string> = {
-  planned: 'Planned',
-  active: 'Active',
-  completed: 'Completed',
-  on_hold: 'On hold',
+/** "12 Mar, 14:05". */
+export function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ })
 }
 
-export const projectStatuses = Object.keys(projectStatusLabel) as ProjectStatus[]
-
-// Today (or today + offset) as YYYY-MM-DD in India time, matching the backend's day boundaries.
-export function dayInIndia(offsetDays = 0) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(Date.now() + offsetDays * 86_400_000))
+/** "14:05". */
+export function formatTime(value: string | null | undefined) {
+  if (!value) return '—'
+  return new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ })
 }
 
-export function lastDays(days: number): DayRange {
-  return { from: dayInIndia(-(days - 1)), to: dayInIndia() }
+/** "3h 20m" from minutes. */
+export function formatMinutes(minutes: number | null | undefined) {
+  if (minutes === null || minutes === undefined) return '—'
+  const m = Math.max(0, Math.round(minutes))
+  const h = Math.floor(m / 60)
+  if (!h) return `${m}m`
+  return m % 60 ? `${h}h ${m % 60}m` : `${h}h`
 }
 
-// Every YYYY-MM-DD from `from` to `to`, inclusive.
-export function daysBetween({ from, to }: DayRange) {
-  const days: string[] = []
-  const cursor = new Date(`${from}T00:00:00Z`)
-  const end = new Date(`${to}T00:00:00Z`)
-  while (cursor <= end && days.length < 400) {
-    days.push(cursor.toISOString().slice(0, 10))
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  }
-  return days
+/** "7.5h" from hours. */
+export function formatHours(hours: number | null | undefined) {
+  if (hours === null || hours === undefined) return '—'
+  return `${Math.round(hours * 10) / 10}h`
 }
 
-export function formatDay(day: string, style: 'short' | 'long' = 'short') {
-  const date = new Date(`${day}T00:00:00Z`)
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'UTC',
-    weekday: style === 'long' ? 'long' : 'short',
-    day: 'numeric',
-    month: 'short',
-  }).format(date)
+/** Live "1h 05m" since a timestamp. */
+export function since(value: string, now = Date.now()) {
+  return formatMinutes((now - new Date(value).getTime()) / 60000)
 }
 
-export function formatDateTime(iso: string) {
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: TZ,
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso))
+/** "3 minutes ago", "yesterday", or a date. */
+export function relative(value: string, now = Date.now()) {
+  const diff = (now - new Date(value).getTime()) / 1000
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 172800) return 'yesterday'
+  if (diff < 7 * 86400) return `${Math.floor(diff / 86400)} days ago`
+  return formatDate(value)
 }
 
-export function formatTime(iso: string) {
-  return new Intl.DateTimeFormat('en-IN', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
+/** "1 task", "3 tasks". */
+export function plural(n: number, word: string, many = `${word}s`) {
+  return `${n.toLocaleString('en-IN')} ${n === 1 ? word : many}`
 }
 
-export function formatDate(iso: string | null) {
-  if (!iso) return 'No deadline'
-  return new Intl.DateTimeFormat('en-IN', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' }).format(
-    new Date(iso),
-  )
+/** Today in India as YYYY-MM-DD, optionally offset by days. */
+export function today(offset = 0) {
+  const d = new Date(Date.now() + offset * 86400000)
+  return d.toLocaleDateString('en-CA', { timeZone: TZ })
 }
 
-export function formatMinutes(minutes: number | null) {
-  if (minutes === null || Number.isNaN(minutes)) return '—'
-  const total = Math.max(0, Math.round(minutes))
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  if (h === 0) return `${m}m`
-  return m === 0 ? `${h}h` : `${h}h ${m}m`
+/** A range ending today. */
+export function lastDays(days: number) {
+  return { from: today(-(days - 1)), to: today() }
 }
 
-export function formatHours(hours: number) {
-  return formatMinutes(hours * 60)
+/** Converts an ISO timestamp to a value for <input type="datetime-local"> in India time. */
+export function toLocalInput(value: string | null | undefined) {
+  if (!value) return ''
+  const d = new Date(new Date(value).getTime() + 330 * 60000)
+  return d.toISOString().slice(0, 16)
 }
 
-export function minutesSince(iso: string, now: number) {
-  return (now - new Date(iso).getTime()) / 60_000
+/** Converts an <input type="datetime-local"> value (India time) back to ISO. */
+export function fromLocalInput(value: string) {
+  return value ? new Date(`${value}:00+05:30`).toISOString() : null
 }
 
-export function formatPct(value: number | null) {
-  return value === null ? '—' : `${Math.round(value)}%`
-}
-
-export function formatRating(value: number | null) {
-  return value === null ? '—' : value.toFixed(1)
-}
-
-export function plural(count: number, one: string, many = `${one}s`) {
-  return `${count} ${count === 1 ? one : many}`
+/** Initials for an avatar. */
+export function initials(name: string) {
+  return name.split(/[\s._-]+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('')
 }
 
 // "just now", "12 min ago", "3 h ago", "yesterday", then a date.
