@@ -1,6 +1,5 @@
-const app = require("./app");
-const port = Number(process.env.PORT) || 3000;
+// Starts the HTTP server.
+const app = require("./src/app");
+const config = require("./src/config");
 
-app.listen(port, () => {
-  console.log(`listening on port ${port}`);
-});
+app.listen(config.port, () => console.log(`Task Tracker API listening on port ${config.port}`));

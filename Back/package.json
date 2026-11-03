@@ -1,24 +1,30 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "backend for the task tracker",
+  "description": "Task Tracker API: projects, Markdown tasks, reviews, time tracking and role-based access.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "seed": "node scripts/seed-users.js"
+    "test": "node --test test/*.test.js",
+    "sql": "node scripts/run-sql.js",
+    "create-admin": "node scripts/create-admin.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.118.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.2",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "postgres": "^3.4.9",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.14",
+    "@electric-sql/pglite-socket": "^0.2.17"
   }
 }
