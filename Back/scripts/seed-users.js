@@ -9,9 +9,9 @@ const supabase = require("../config/db");
 const password = process.env.SEED_PASSWORD || "TaskTracker@123";
 
 const dummyUsers = [
-  { name: "aathi", email: "aathi@example.com" },
-  { name: "priya", email: "priya@example.com" },
-  { name: "karthik", email: "karthik@example.com" },
+  { name: "aathi", email: "aathi2006@gmail.com" },
+  { name: "priya", email: "priya@gmail.com" },
+  { name: "karthik", email: "karthik@gmail.com" },
 ];
 
 async function exists(column, value) {
